@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reaper-mcp"
+version = "0.1.0"
+description = "MCP server for controlling REAPER"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "mcp>=1.6.0"
+]
+
+[project.scripts]
+reaper-mcp = "reaper_mcp.server:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

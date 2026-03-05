@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "reaper": {
+      "type": "stdio",
+      "command": "./.venv/bin/python",
+      "args": ["-m", "reaper_mcp"]
+    }
+  }
+}
