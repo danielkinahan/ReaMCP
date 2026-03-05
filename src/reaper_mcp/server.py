@@ -722,6 +722,59 @@ def set_input_monitoring(track_index: int, mode: int) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Automation
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_envelope_points(track_index: int, envelope_index: int) -> dict[str, Any]:
+    """
+    Read all automation envelope points from a track envelope.
+    - envelope_index: 0-based index of the envelope on the track
+    Returns envelope name and list of points with time, value, shape, tension.
+    """
+    try:
+        return _wrap(
+            adapter.get_envelope_points(
+                track_index=track_index, envelope_index=envelope_index
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def insert_envelope_point(
+    track_index: int,
+    envelope_index: int,
+    time: float,
+    value: float,
+    shape: int = 0,
+    tension: float = 0.0,
+) -> dict[str, Any]:
+    """
+    Insert a point into an automation envelope.
+    - time: position in seconds
+    - value: normalized envelope value (0.0–1.0 for most envelopes)
+    - shape: 0=linear, 1=square, 2=slow start/end, 3=fast start, 4=fast end, 5=bezier
+    - tension: bezier tension (-1.0 to 1.0)
+    """
+    try:
+        return _wrap(
+            adapter.insert_envelope_point(
+                track_index=track_index,
+                envelope_index=envelope_index,
+                time=time,
+                value=value,
+                shape=shape,
+                tension=tension,
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

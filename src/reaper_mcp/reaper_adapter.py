@@ -415,3 +415,35 @@ class ReaperAdapter:
             track_index=track_index,
             mode=mode,
         )
+
+    # ------------------------------------------------------------------
+    # Automation
+    # ------------------------------------------------------------------
+
+    def get_envelope_points(
+        self, track_index: int, envelope_index: int
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "get_envelope_points",
+            track_index=track_index,
+            envelope_index=envelope_index,
+        )
+
+    def insert_envelope_point(
+        self,
+        track_index: int,
+        envelope_index: int,
+        time: float,
+        value: float,
+        shape: int = 0,
+        tension: float = 0.0,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "insert_envelope_point",
+            track_index=track_index,
+            envelope_index=envelope_index,
+            time=time,
+            value=value,
+            shape=shape,
+            tension=tension,
+        )

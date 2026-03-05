@@ -872,6 +872,60 @@ handlers.set_input_monitoring = function(p)
 end
 
 -- ---------------------------------------------------------------------------
+-- Automation
+-- ---------------------------------------------------------------------------
+
+-- Read all points from a track envelope
+-- params: track_index, envelope_index (0-based index of envelope on the track)
+handlers.get_envelope_points = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local env = reaper.GetTrackEnvelope(track, p.envelope_index)
+  if not env then error('Envelope index out of range: ' .. tostring(p.envelope_index)) end
+  local _, env_name = reaper.GetEnvelopeName(env, '')
+  local n = reaper.CountEnvelopePoints(env)
+  local points = {}
+  for i = 0, n - 1 do
+    local _, time, value, shape, tension, selected = reaper.GetEnvelopePoint(env, i)
+    table.insert(points, {
+      point_index = i,
+      time        = time,
+      value       = value,
+      shape       = shape,
+      tension     = tension,
+      selected    = selected,
+    })
+  end
+  return {
+    track_index    = p.track_index,
+    envelope_index = p.envelope_index,
+    envelope_name  = env_name,
+    points         = points,
+  }
+end
+
+-- Insert an automation envelope point
+-- params: track_index, envelope_index, time, value, shape (0=linear), tension
+handlers.insert_envelope_point = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local env = reaper.GetTrackEnvelope(track, p.envelope_index)
+  if not env then error('Envelope index out of range: ' .. tostring(p.envelope_index)) end
+  local shape   = p.shape   or 0
+  local tension = p.tension or 0.0
+  reaper.InsertEnvelopePoint(env, p.time, p.value, shape, tension, false, true)
+  reaper.Envelope_SortPoints(env)
+  return {
+    track_index    = p.track_index,
+    envelope_index = p.envelope_index,
+    time           = p.time,
+    value          = p.value,
+    shape          = shape,
+    tension        = tension,
+  }
+end
+
+-- ---------------------------------------------------------------------------
 -- JSON-RPC dispatcher
 -- ---------------------------------------------------------------------------
 local function handle_line(line)
