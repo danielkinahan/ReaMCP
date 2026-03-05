@@ -232,6 +232,45 @@ def duplicate_item(track_index: int, item_index: int) -> dict[str, Any]:
 
 
 @mcp.tool()
+def insert_midi_event(
+    track_index: int,
+    item_index: int,
+    event_type: str,
+    ppq: int,
+    channel: int = 0,
+    cc_number: int | None = None,
+    value: int | None = None,
+    bend: int | None = None,
+    program: int | None = None,
+) -> dict[str, Any]:
+    """
+    Insert a MIDI CC, pitch-bend, or program-change event into a MIDI item.
+    - event_type: 'cc' | 'pitch_bend' | 'program_change'
+    - ppq: position in PPQ ticks
+    - channel: 0-15
+    - cc: provide cc_number (0-127) and value (0-127)
+    - pitch_bend: provide bend (-8192 to 8191, 0 = center)
+    - program_change: provide program (0-127)
+    """
+    try:
+        return _wrap(
+            adapter.insert_midi_event(
+                track_index=track_index,
+                item_index=item_index,
+                event_type=event_type,
+                ppq=ppq,
+                channel=channel,
+                cc_number=cc_number,
+                value=value,
+                bend=bend,
+                program=program,
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
 def delete_midi_note(
     track_index: int,
     item_index: int,

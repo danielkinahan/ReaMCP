@@ -124,6 +124,31 @@ class ReaperAdapter:
             item_index=item_index,
         )
 
+    def insert_midi_event(
+        self,
+        track_index: int,
+        item_index: int,
+        event_type: str,
+        ppq: int,
+        channel: int = 0,
+        cc_number: int | None = None,
+        value: int | None = None,
+        bend: int | None = None,
+        program: int | None = None,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "insert_midi_event",
+            track_index=track_index,
+            item_index=item_index,
+            event_type=event_type,
+            ppq=ppq,
+            channel=channel,
+            cc_number=cc_number,
+            value=value,
+            bend=bend,
+            program=program,
+        )
+
     def delete_midi_note(
         self, track_index: int, item_index: int, note_index: int
     ) -> dict[str, Any]:

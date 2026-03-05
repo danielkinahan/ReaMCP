@@ -428,6 +428,43 @@ handlers.get_midi_notes = function(p)
   return { track_index = p.track_index, item_index = p.item_index, notes = notes }
 end
 
+-- Insert a MIDI CC, pitch-bend, or program-change event
+-- params: track_index, item_index, event_type ('cc'|'pitch_bend'|'program_change'),
+--   ppq, channel (0-based), and type-specific fields:
+--   cc:             cc_number (0-127), value (0-127)
+--   pitch_bend:     bend (-8192 to 8191, 0 = center)
+--   program_change: program (0-127)
+handlers.insert_midi_event = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  local take = reaper.GetActiveTake(item)
+  if not take or not reaper.TakeIsMIDI(take) then
+    error('Item does not have an active MIDI take')
+  end
+  local ppq  = p.ppq     or 0
+  local chan  = p.channel or 0
+  local sel   = false
+  local muted = false
+  local ev_type = (p.event_type or ''):lower()
+  if ev_type == 'cc' then
+    reaper.MIDI_InsertCC(take, sel, muted, ppq, 0xB0, chan, p.cc_number or 0, p.value or 0)
+  elseif ev_type == 'pitch_bend' then
+    local bend = (p.bend or 0) + 8192  -- shift to 0-16383
+    if bend < 0 then bend = 0 elseif bend > 16383 then bend = 16383 end
+    local lsb = bend % 128
+    local msb = math.floor(bend / 128)
+    reaper.MIDI_InsertCC(take, sel, muted, ppq, 0xE0, chan, lsb, msb)
+  elseif ev_type == 'program_change' then
+    reaper.MIDI_InsertCC(take, sel, muted, ppq, 0xC0, chan, p.program or 0, 0)
+  else
+    error('Unknown event_type: ' .. tostring(p.event_type))
+  end
+  reaper.MIDI_Sort(take)
+  return { inserted = true, event_type = ev_type, ppq = ppq, channel = chan }
+end
+
 -- Delete a MIDI note by its index
 -- params: track_index, item_index, note_index
 handlers.delete_midi_note = function(p)
