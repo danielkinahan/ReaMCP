@@ -103,6 +103,15 @@ def create_track(name: str | None = None, index: int | None = None) -> dict[str,
 
 
 @mcp.tool()
+def delete_track(track_index: int) -> dict[str, Any]:
+    """Delete a track by 0-based index. This is permanent and undoable via REAPER's undo system."""
+    try:
+        return _wrap(adapter.delete_track(track_index=track_index))
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
 def set_track_properties(
     track_index: int,
     name: str | None = None,

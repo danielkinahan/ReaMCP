@@ -267,6 +267,16 @@ handlers.create_track = function(p)
   return track_info(track, idx)
 end
 
+-- Delete a track
+handlers.delete_track = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  reaper.DeleteTrack(track)
+  reaper.TrackList_AdjustWindows(false)
+  reaper.UpdateArrange()
+  return { deleted = true, track_index = p.track_index }
+end
+
 -- Modify track properties
 handlers.set_track_properties = function(p)
   local track = track_at(p.track_index)

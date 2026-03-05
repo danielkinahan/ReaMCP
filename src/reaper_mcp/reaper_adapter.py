@@ -48,6 +48,9 @@ class ReaperAdapter:
     ) -> dict[str, Any]:
         return self._client.call("create_track", name=name, index=index)
 
+    def delete_track(self, track_index: int) -> dict[str, Any]:
+        return self._client.call("delete_track", track_index=track_index)
+
     def set_track_properties(
         self,
         track_index: int,
