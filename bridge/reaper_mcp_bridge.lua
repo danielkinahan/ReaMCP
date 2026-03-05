@@ -684,9 +684,117 @@ end
 handlers.set_fx_preset = function(p)
   local track = track_at(p.track_index)
   if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
-  local ok = reaper.TrackFX_SetPreset(track, p.fx_index, p.preset_name)
+  local ok = false
+  -- If given an absolute path (full path to .ffp / .fxp / .fxb), load via presetfile param
+  if p.preset_name:sub(1, 1) == '/' or p.preset_name:match('^%a:\\') then
+    ok = reaper.TrackFX_SetNamedConfigParm(track, p.fx_index, 'presetfile', p.preset_name)
+    if not ok then
+      -- fallback: try TrackFX_SetPreset with the full path anyway
+      ok = reaper.TrackFX_SetPreset(track, p.fx_index, p.preset_name)
+    end
+  else
+    ok = reaper.TrackFX_SetPreset(track, p.fx_index, p.preset_name)
+  end
   local _, current = reaper.TrackFX_GetPreset(track, p.fx_index, '')
   return { loaded = ok, track_index = p.track_index, fx_index = p.fx_index, preset = current }
+end
+
+-- List available presets for a plugin by name.
+-- FabFilter (and many others) store presets as files on disk;
+-- REAPER's TrackFX_SetPreset() can load them by the filename stem.
+-- params: fx_name (e.g. "Twin 3 (FabFilter)" or "Twin 3"), category (optional filter)
+handlers.list_fx_presets = function(p)
+  if not p or not p.fx_name then error('fx_name required') end
+
+  -- Normalise: strip leading "VST3i: " / "VSTi: " / "CLAP: " etc., trim spaces
+  local name = p.fx_name:match('^%S+:%s+(.+)$') or p.fx_name
+  name = name:match('^%s*(.-)%s*$')
+
+  -- Also produce a "short" name with the vendor suffix stripped, e.g.
+  -- "Twin 3 (FabFilter)" → "Twin 3"
+  local short = name:match('^(.-)%s*%([^)]+%)%s*$') or name
+
+  local cat_filter = p.category and p.category:lower() or nil
+
+  -- Directories to search (in priority order).
+  -- 1. ~/Documents/{Vendor}/Presets/{PluginName}/   (FabFilter pattern)
+  -- 2. ~/Documents/Presets/{PluginName}/            (generic)
+  -- 3. {REAPER resource path}/presets/{PluginName}/ (REAPER own store)
+  local home = os.getenv('HOME') or ''
+  local res  = reaper.GetResourcePath()
+
+  -- Detect vendor from parenthesised suffix, e.g. "(FabFilter)"
+  local vendor = name:match('%(([^)]+)%)%s*$') or ''
+
+  local search_dirs = {}
+  if vendor ~= '' then
+    table.insert(search_dirs, home .. '/Documents/' .. vendor .. '/Presets/' .. short)
+    table.insert(search_dirs, home .. '/Documents/' .. vendor .. '/Presets/' .. name)
+  end
+  table.insert(search_dirs, home .. '/Documents/Presets/' .. short)
+  table.insert(search_dirs, home .. '/Documents/Presets/' .. name)
+  table.insert(search_dirs, res  .. '/presets/' .. short)
+  table.insert(search_dirs, res  .. '/presets/' .. name)
+
+  local results   = {}
+  local found_dir = nil
+
+  for _, dir in ipairs(search_dirs) do
+    -- Check if the directory exists by attempting to open it
+    local test = io.open(dir .. '/.', 'r')  -- works on some systems
+    -- More reliable: try listing a known pattern via popen
+    local probe = io.popen('ls -1 "' .. dir .. '" 2>/dev/null')
+    if probe then
+      local listing = probe:read('*a')
+      probe:close()
+      if listing and listing ~= '' then
+        found_dir = dir
+        break
+      end
+    end
+  end
+
+  if not found_dir then
+    return { fx_name = p.fx_name, presets = results, count = 0,
+             note = 'No preset directory found. Searched: ' .. table.concat(search_dirs, ', ') }
+  end
+
+  -- Walk the found directory recursively (one level of sub-dirs = categories)
+  -- Use find for simplicity
+  local cmd = 'find "' .. found_dir .. '" -name "*.ffp" -o -name "*.fxp" 2>/dev/null'
+  local pipe = io.popen(cmd)
+  if pipe then
+    for line in pipe:lines() do
+      line = line:match('^%s*(.-)%s*$')
+      if line ~= '' then
+        -- Category = immediate parent folder name relative to found_dir
+        local rel  = line:sub(#found_dir + 2)  -- strip base dir + separator
+        local cat, pname = rel:match('^(.*)/([^/]+)$')
+        if not cat then
+          cat   = ''
+          pname = rel
+        end
+        pname = pname:match('^(.+)%.[^.]+$') or pname  -- strip extension
+
+        local include = true
+        if cat_filter then
+          include = cat:lower():find(cat_filter, 1, true) ~= nil
+        end
+        if include then
+          table.insert(results, { category = cat, name = pname, path = line })
+        end
+      end
+    end
+    pipe:close()
+  end
+
+  table.sort(results, function(a, b)
+    if a.category ~= b.category then return a.category < b.category end
+    return a.name < b.name
+  end)
+
+  return { fx_name = p.fx_name, preset_dir = found_dir,
+           count = #results, presets = results }
 end
 
 -- Set tempo (and optionally time signature)

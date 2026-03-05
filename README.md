@@ -12,7 +12,7 @@ This is an early public draft focused on a reliable core toolset.
 - Create MIDI items; read, insert, modify, and delete MIDI notes, CC, pitch bend, and program change events
 - Insert audio files onto tracks
 - Control transport and cursor position
-- Add, list, and remove FX; read/write FX parameters; bypass/enable FX; load FX presets
+- Add, list, and remove FX; read/write FX parameters; bypass/enable FX; list available FX presets by name
 - Read and set tempo/time signature and project parameters
 - Save the project and trigger undo
 - Add, list, and delete markers and regions
@@ -103,7 +103,8 @@ Optional environment variables:
 | `set_fx_param` | Set FX parameter (normalized `0.0–1.0`) |
 | `set_fx_enabled` | Enable or bypass an FX plugin |
 | `remove_fx` | Remove an FX from the chain |
-| `set_fx_preset` | Load a named FX preset |
+| `set_fx_preset` | Load a named FX preset (works for plugins that expose a VST program bank) |
+| `list_fx_presets` | List presets for a plugin by scanning vendor preset directories on disk |
 | `get_tempo` | Read BPM and time signature |
 | `set_tempo` | Set BPM and optional time signature |
 | `set_project_parameter` | Set `loop_start`, `loop_end`, `loop_enabled`, `cursor_position`, `playrate` |
@@ -115,6 +116,10 @@ Optional environment variables:
 | `set_track_send` | Set send volume and pan |
 | `get_envelope_points` | Read all automation envelope points |
 | `insert_envelope_point` | Insert an automation envelope point |
+
+## Limitations
+
+**Preset loading** — `set_fx_preset` only works for plugins that expose named programs through the standard VST/CLAP program-bank API. Many commercial plugins (e.g. FabFilter, NI) use proprietary binary preset formats and do not implement this API, so programmatic preset loading is not possible for those plugins. `list_fx_presets` can discover preset files on disk, but loading them is not supported.
 
 ## MCP client config (VS Code / stdio)
 

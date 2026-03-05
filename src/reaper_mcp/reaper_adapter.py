@@ -294,6 +294,15 @@ class ReaperAdapter:
             preset_name=preset_name,
         )
 
+    def list_fx_presets(
+        self, fx_name: str, category: str | None = None
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "list_fx_presets",
+            fx_name=fx_name,
+            category=category,
+        )
+
     # ------------------------------------------------------------------
     # Tempo & project parameters
     # ------------------------------------------------------------------

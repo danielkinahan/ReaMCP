@@ -492,13 +492,47 @@ def remove_fx(track_index: int, fx_index: int) -> dict[str, Any]:
 
 @mcp.tool()
 def set_fx_preset(track_index: int, fx_index: int, preset_name: str) -> dict[str, Any]:
-    """Load a named preset for an FX plugin on a track."""
+    """
+    Load a named preset for an FX plugin on a track.
+    preset_name can be:
+    - A plain preset name (works for plugins with internal preset banks)
+    - A full absolute file path to a .ffp/.fxp/.fxb file (required for FabFilter
+      and other plugins that store presets as files). Use the 'path' field returned
+      by list_fx_presets() for file-based plugins.
+    """
     try:
         return _wrap(
             adapter.set_fx_preset(
                 track_index=track_index, fx_index=fx_index, preset_name=preset_name
             )
         )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def list_fx_presets(
+    fx_name: str, category: str | None = None
+) -> dict[str, Any]:
+    """
+    List available presets for a plugin by name.
+
+    Many plugins (including all FabFilter plugins) store presets as files on
+    disk rather than through the VST program-bank mechanism. This tool scans
+    those directories so you can discover preset names and then load them with
+    set_fx_preset().
+
+    - fx_name: plugin display name, e.g. 'Twin 3 (FabFilter)' or 'Twin 3'.
+               Vendor suffix in parentheses is used to locate the preset folder.
+    - category: optional sub-folder filter, e.g. 'Drums', 'Bass'.
+
+    Returns a list of {category, name, path} objects sorted by category then name.
+    Note: actually loading these presets programmatically is not supported — most
+    plugin vendors (e.g. FabFilter) use proprietary binary formats that cannot be
+    injected via the VST state API.
+    """
+    try:
+        return _wrap(adapter.list_fx_presets(fx_name=fx_name, category=category))
     except Exception as exc:
         return _err(exc)
 
