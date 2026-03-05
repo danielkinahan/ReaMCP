@@ -232,6 +232,64 @@ def duplicate_item(track_index: int, item_index: int) -> dict[str, Any]:
 
 
 @mcp.tool()
+def delete_midi_note(
+    track_index: int,
+    item_index: int,
+    note_index: int,
+) -> dict[str, Any]:
+    """Delete a specific MIDI note from a MIDI item by its 0-based note index."""
+    try:
+        return _wrap(
+            adapter.delete_midi_note(
+                track_index=track_index,
+                item_index=item_index,
+                note_index=note_index,
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def set_midi_note(
+    track_index: int,
+    item_index: int,
+    note_index: int,
+    start_ppq: int | None = None,
+    end_ppq: int | None = None,
+    pitch: int | None = None,
+    velocity: int | None = None,
+    channel: int | None = None,
+    selected: bool | None = None,
+    muted: bool | None = None,
+) -> dict[str, Any]:
+    """
+    Modify an existing MIDI note. Only the supplied fields are changed.
+    - pitch: MIDI note number (0-127)
+    - velocity: 0-127
+    - channel: 0-15
+    - start_ppq / end_ppq: positions in PPQ ticks
+    """
+    try:
+        return _wrap(
+            adapter.set_midi_note(
+                track_index=track_index,
+                item_index=item_index,
+                note_index=note_index,
+                start_ppq=start_ppq,
+                end_ppq=end_ppq,
+                pitch=pitch,
+                velocity=velocity,
+                channel=channel,
+                selected=selected,
+                muted=muted,
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
 def get_midi_notes(track_index: int, item_index: int) -> dict[str, Any]:
     """
     Read all MIDI notes from a media item's active MIDI take.

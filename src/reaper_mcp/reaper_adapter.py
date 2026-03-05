@@ -124,6 +124,43 @@ class ReaperAdapter:
             item_index=item_index,
         )
 
+    def delete_midi_note(
+        self, track_index: int, item_index: int, note_index: int
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "delete_midi_note",
+            track_index=track_index,
+            item_index=item_index,
+            note_index=note_index,
+        )
+
+    def set_midi_note(
+        self,
+        track_index: int,
+        item_index: int,
+        note_index: int,
+        start_ppq: int | None = None,
+        end_ppq: int | None = None,
+        pitch: int | None = None,
+        velocity: int | None = None,
+        channel: int | None = None,
+        selected: bool | None = None,
+        muted: bool | None = None,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "set_midi_note",
+            track_index=track_index,
+            item_index=item_index,
+            note_index=note_index,
+            start_ppq=start_ppq,
+            end_ppq=end_ppq,
+            pitch=pitch,
+            velocity=velocity,
+            channel=channel,
+            selected=selected,
+            muted=muted,
+        )
+
     def get_midi_notes(self, track_index: int, item_index: int) -> dict[str, Any]:
         return self._client.call(
             "get_midi_notes", track_index=track_index, item_index=item_index

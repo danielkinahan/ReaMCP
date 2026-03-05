@@ -428,6 +428,57 @@ handlers.get_midi_notes = function(p)
   return { track_index = p.track_index, item_index = p.item_index, notes = notes }
 end
 
+-- Delete a MIDI note by its index
+-- params: track_index, item_index, note_index
+handlers.delete_midi_note = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  local take = reaper.GetActiveTake(item)
+  if not take or not reaper.TakeIsMIDI(take) then
+    error('Item does not have an active MIDI take')
+  end
+  local ok = reaper.MIDI_DeleteNote(take, p.note_index)
+  reaper.MIDI_Sort(take)
+  return { deleted = ok, note_index = p.note_index }
+end
+
+-- Modify an existing MIDI note
+-- params: track_index, item_index, note_index, and any of:
+--   start_ppq, end_ppq, pitch, velocity, channel, selected, muted
+handlers.set_midi_note = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  local take = reaper.GetActiveTake(item)
+  if not take or not reaper.TakeIsMIDI(take) then
+    error('Item does not have an active MIDI take')
+  end
+  -- Read existing values so we only overwrite what the caller supplies
+  local _, sel, muted, startppq, endppq, chan, pitch, vel = reaper.MIDI_GetNote(take, p.note_index)
+  sel      = (p.selected  ~= nil) and p.selected  or sel
+  muted    = (p.muted     ~= nil) and p.muted     or muted
+  startppq = p.start_ppq  or startppq
+  endppq   = p.end_ppq    or endppq
+  chan     = p.channel    or chan
+  pitch    = p.pitch      or pitch
+  vel      = p.velocity   or vel
+  reaper.MIDI_SetNote(take, p.note_index, sel, muted, startppq, endppq, chan, pitch, vel, false)
+  reaper.MIDI_Sort(take)
+  return {
+    note_index = p.note_index,
+    start_ppq  = startppq,
+    end_ppq    = endppq,
+    channel    = chan,
+    pitch      = pitch,
+    velocity   = vel,
+    selected   = sel,
+    muted      = muted,
+  }
+end
+
 -- Create MIDI item (with optional notes)
 -- notes: list of {start_ppq, end_ppq, pitch, velocity=100, channel=0}
 handlers.create_midi_item = function(p)
