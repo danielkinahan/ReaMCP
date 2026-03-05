@@ -399,6 +399,35 @@ handlers.duplicate_item = function(p)
   return { duplicated = true, track_index = p.track_index, n_items = n_items }
 end
 
+-- Read all MIDI notes from a take
+-- params: track_index, item_index
+handlers.get_midi_notes = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  local take = reaper.GetActiveTake(item)
+  if not take or not reaper.TakeIsMIDI(take) then
+    error('Item does not have an active MIDI take')
+  end
+  local _, note_cnt, _, _ = reaper.MIDI_CountEvts(take)
+  local notes = {}
+  for i = 0, note_cnt - 1 do
+    local _, sel, muted, startppq, endppq, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
+    table.insert(notes, {
+      note_index  = i,
+      selected    = sel,
+      muted       = muted,
+      start_ppq   = startppq,
+      end_ppq     = endppq,
+      channel     = chan,
+      pitch       = pitch,
+      velocity    = vel,
+    })
+  end
+  return { track_index = p.track_index, item_index = p.item_index, notes = notes }
+end
+
 -- Create MIDI item (with optional notes)
 -- notes: list of {start_ppq, end_ppq, pitch, velocity=100, channel=0}
 handlers.create_midi_item = function(p)

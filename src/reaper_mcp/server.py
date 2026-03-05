@@ -232,6 +232,20 @@ def duplicate_item(track_index: int, item_index: int) -> dict[str, Any]:
 
 
 @mcp.tool()
+def get_midi_notes(track_index: int, item_index: int) -> dict[str, Any]:
+    """
+    Read all MIDI notes from a media item's active MIDI take.
+    Returns a list of notes with start_ppq, end_ppq, pitch, velocity, channel.
+    """
+    try:
+        return _wrap(
+            adapter.get_midi_notes(track_index=track_index, item_index=item_index)
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
 def create_midi_item(
     track_index: int,
     start: float,

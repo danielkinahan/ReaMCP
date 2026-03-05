@@ -124,6 +124,11 @@ class ReaperAdapter:
             item_index=item_index,
         )
 
+    def get_midi_notes(self, track_index: int, item_index: int) -> dict[str, Any]:
+        return self._client.call(
+            "get_midi_notes", track_index=track_index, item_index=item_index
+        )
+
     def create_midi_item(
         self,
         track_index: int,
