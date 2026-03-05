@@ -624,6 +624,15 @@ def delete_marker(enum_index: int) -> dict[str, Any]:
         return _err(exc)
 
 
+@mcp.tool()
+def open_project(file_path: str) -> dict[str, Any]:
+    """Open a REAPER project file (.rpp) by its absolute path."""
+    try:
+        return _wrap(adapter.open_project(file_path=file_path))
+    except Exception as exc:
+        return _err(exc)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------

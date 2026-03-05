@@ -352,3 +352,6 @@ class ReaperAdapter:
 
     def delete_marker(self, enum_index: int) -> dict[str, Any]:
         return self._client.call("delete_marker", enum_index=enum_index)
+
+    def open_project(self, file_path: str) -> dict[str, Any]:
+        return self._client.call("open_project", file_path=file_path)

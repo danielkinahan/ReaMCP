@@ -788,6 +788,15 @@ handlers.delete_marker = function(p)
   return { deleted = ok, enum_index = p.enum_index }
 end
 
+-- Open a project file by its absolute path
+handlers.open_project = function(p)
+  if not p.file_path or p.file_path == '' then
+    error('file_path is required')
+  end
+  reaper.Main_openProject(p.file_path)
+  return { opened = true, file_path = p.file_path }
+end
+
 -- ---------------------------------------------------------------------------
 -- JSON-RPC dispatcher
 -- ---------------------------------------------------------------------------
