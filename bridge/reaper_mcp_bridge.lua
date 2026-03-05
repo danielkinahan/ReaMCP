@@ -798,6 +798,54 @@ handlers.open_project = function(p)
 end
 
 -- ---------------------------------------------------------------------------
+-- Routing & sends
+-- ---------------------------------------------------------------------------
+
+-- Create a send from one track to another
+-- params: src_track_index, dst_track_index
+handlers.create_track_send = function(p)
+  local src = track_at(p.src_track_index)
+  if not src then error('src_track_index out of range') end
+  local dst = track_at(p.dst_track_index)
+  if not dst then error('dst_track_index out of range') end
+  local send_idx = reaper.CreateTrackSend(src, dst)
+  local vol = reaper.GetTrackSendInfo_Value(src, 0, send_idx, 'D_VOL')
+  local pan = reaper.GetTrackSendInfo_Value(src, 0, send_idx, 'D_PAN')
+  return {
+    src_track_index = p.src_track_index,
+    dst_track_index = p.dst_track_index,
+    send_index      = send_idx,
+    volume          = vol,
+    pan             = pan,
+  }
+end
+
+-- Remove a track send
+-- params: track_index, send_index
+handlers.remove_track_send = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local ok = reaper.RemoveTrackSend(track, 0, p.send_index)
+  return { removed = ok, track_index = p.track_index, send_index = p.send_index }
+end
+
+-- Set send volume and/or pan
+-- params: track_index, send_index, volume (linear), pan (-1 to 1)
+handlers.set_track_send = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  if p.volume ~= nil then
+    reaper.SetTrackSendInfo_Value(track, 0, p.send_index, 'D_VOL', p.volume)
+  end
+  if p.pan ~= nil then
+    reaper.SetTrackSendInfo_Value(track, 0, p.send_index, 'D_PAN', p.pan)
+  end
+  local vol = reaper.GetTrackSendInfo_Value(track, 0, p.send_index, 'D_VOL')
+  local pan = reaper.GetTrackSendInfo_Value(track, 0, p.send_index, 'D_PAN')
+  return { track_index = p.track_index, send_index = p.send_index, volume = vol, pan = pan }
+end
+
+-- ---------------------------------------------------------------------------
 -- JSON-RPC dispatcher
 -- ---------------------------------------------------------------------------
 local function handle_line(line)

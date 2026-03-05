@@ -355,3 +355,40 @@ class ReaperAdapter:
 
     def open_project(self, file_path: str) -> dict[str, Any]:
         return self._client.call("open_project", file_path=file_path)
+
+    # ------------------------------------------------------------------
+    # Routing & sends
+    # ------------------------------------------------------------------
+
+    def create_track_send(
+        self, src_track_index: int, dst_track_index: int
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "create_track_send",
+            src_track_index=src_track_index,
+            dst_track_index=dst_track_index,
+        )
+
+    def remove_track_send(
+        self, track_index: int, send_index: int
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "remove_track_send",
+            track_index=track_index,
+            send_index=send_index,
+        )
+
+    def set_track_send(
+        self,
+        track_index: int,
+        send_index: int,
+        volume: float | None = None,
+        pan: float | None = None,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "set_track_send",
+            track_index=track_index,
+            send_index=send_index,
+            volume=volume,
+            pan=pan,
+        )

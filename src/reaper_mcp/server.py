@@ -634,6 +634,60 @@ def open_project(file_path: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Routing & sends
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def create_track_send(src_track_index: int, dst_track_index: int) -> dict[str, Any]:
+    """Create a send from one track to another. Returns the new send index."""
+    try:
+        return _wrap(
+            adapter.create_track_send(
+                src_track_index=src_track_index, dst_track_index=dst_track_index
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def remove_track_send(track_index: int, send_index: int) -> dict[str, Any]:
+    """Remove a send from a track by its 0-based send index."""
+    try:
+        return _wrap(
+            adapter.remove_track_send(track_index=track_index, send_index=send_index)
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def set_track_send(
+    track_index: int,
+    send_index: int,
+    volume: float | None = None,
+    pan: float | None = None,
+) -> dict[str, Any]:
+    """
+    Set the volume and/or pan of a track send.
+    - volume: linear amplitude (1.0 = 0 dB)
+    - pan: -1.0 (full left) to 1.0 (full right)
+    """
+    try:
+        return _wrap(
+            adapter.set_track_send(
+                track_index=track_index,
+                send_index=send_index,
+                volume=volume,
+                pan=pan,
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
