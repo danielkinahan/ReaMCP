@@ -23,16 +23,15 @@ This is an early public draft focused on a reliable core toolset.
 
 ## Requirements
 
-- REAPER (with ReaPack)
+- REAPER (with [ReaPack](https://reapack.com/))
 - Python 3.10+
-- `mavriq-lua-sockets` installed in REAPER
 
 ## Setup
 
 ### 1) Install the Python server
 
 ```bash
-pip install -e .
+pip install -e . # You can also `uv sync` but it's not supported.
 ```
 
 ### 2) Install `mavriq-lua-sockets` in REAPER and restart
@@ -45,13 +44,17 @@ REAPER's embedded Lua cannot load stock LuaSocket builds in this context. Instal
 4. Install **mavriq-lua-sockets**
 5. Restart REAPER
 
-### 3) Load and run the bridge script in REAPER
+### 3) Install and run the bridge script via ReaPack
 
-1. REAPER → **Actions → Show action list → Load ReaScript**
-2. Select `bridge/reaper_mcp_bridge.lua`
-3. Run it once
-4. Confirm REAPER console shows `Listening on 127.0.0.1:9001`
-5. Optional: add it to startup actions so it auto-runs
+1. REAPER → **Extensions → ReaPack → Import repositories**
+2. Add `https://github.com/danielkinahan/ReaMCP/raw/main/index.xml`
+3. REAPER → **Extensions → ReaPack → Browse packages**
+4. Install **ReaMCP Bridge**
+5. Run it once via **Actions → Show action list → ReaMCP Bridge**
+6. Confirm REAPER console shows `Listening on 127.0.0.1:9001`
+7. Optional: add it to startup actions so it auto-runs on launch
+
+You may also run this manually via **Actions -> ReaScript: Run ReaScript (EEL2 or Lua)...** and selecting the lua script from this repo.
 
 ### 4) Start the MCP server
 
@@ -137,7 +140,7 @@ Optional environment variables:
 
 ## ReaPack package in this repo
 
-`reapack/index.xml` currently ships a setup helper script for onboarding. The bridge script itself remains in `bridge/reaper_mcp_bridge.lua`.
+`reapack/index.xml` ships the bridge script (`bridge/reaper_mcp_bridge.lua`) as a ReaPack package so users can install and auto-update it directly from REAPER.
 
 ## Architecture
 

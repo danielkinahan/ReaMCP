@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<index version="1" name="ReaMCP">
+  <category name="Scripts">
+    <reapack name="ReaMCP Bridge.lua" type="script" desc="Bridge script for ReaMCP — connects REAPER to the ReaMCP MCP server via TCP.">
+      <metadata>
+        <link rel="website">https://github.com/danielkinahan/ReaMCP</link>
+      </metadata>
+      <version name="1.0.0" author="Daniel Kinahan" time="2026-03-05T00:00:00Z">
+        <source file="ReaMCP Bridge.lua" main="true">https://raw.githubusercontent.com/danielkinahan/ReaMCP/main/bridge/reaper_mcp_bridge.lua</source>
+      </version>
+    </reapack>
+  </category>
+</index>
