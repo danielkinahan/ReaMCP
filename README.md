@@ -1,8 +1,17 @@
-# ReaMCP (reaper-mcp)
+# ReaMCP
 
-MCP server for controlling and editing REAPER projects.
+ReaMCP is a Reaper MCP for controlling and editing projects in your DAW. Connect this to agentic editors like Claude Desktop, VS Code or Zed to make use of the querying and editing tools in Reaper.
 
-This is an early public draft focused on a reliable core toolset.
+
+## How this differs from similar projects
+
+There are a few other REAPER MCP servers. Here's how they compare:
+
+**[dschuler36/reaper-mcp-server](https://github.com/dschuler36/reaper-mcp-server)** — Read-only, file-based. Parses `.rpp` project files directly from disk and does audio analysis on rendered files. No live REAPER connection — REAPER doesn't need to be open. Good for querying existing projects and mix feedback, but can't create or change anything.
+
+**[itsuzef/reaper-mcp](https://github.com/itsuzef/reaper-mcp)** — Live connection via OSC or ReaPy (Python-in-REAPER). OSC is limited to transport and basic fader control; the ReaScript mode is more capable but requires configuring Python inside REAPER. Only a handful of tools (create track, add MIDI note, get project info).
+
+**This project** — Live connection via a persistent Lua bridge script running inside REAPER, communicating over a local TCP socket. No OSC setup, no Python DLL wiring. Exposes the full `reaper.*` Lua API surface, giving a much broader and more reliable toolset: full MIDI editing, FX chain management, automation, sends, markers, media item manipulation, and more.
 
 ## What it does
 
@@ -124,7 +133,9 @@ Optional environment variables:
 
 **Preset loading** — `set_fx_preset` only works for plugins that expose named programs through the standard VST/CLAP program-bank API. Many commercial plugins (e.g. FabFilter, NI) use proprietary binary preset formats and do not implement this API, so programmatic preset loading is not possible for those plugins. `list_fx_presets` can discover preset files on disk, but loading them is not supported.
 
-## MCP client config (VS Code / stdio)
+## MCP client configuration
+
+### VS Code (`.vscode/mcp.json`)
 
 ```json
 {
@@ -138,9 +149,41 @@ Optional environment variables:
 }
 ```
 
+### Claude Desktop (`claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "reaper": {
+      "command": "/path/to/venv/bin/python",
+      "args": ["-m", "reaper_mcp"]
+    }
+  }
+}
+```
+
+Config file location:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Zed (`~/.config/zed/settings.json`)
+
+```json
+{
+  "context_servers": {
+    "reaper": {
+      "command": {
+        "path": "./.venv/bin/python",
+        "args": ["-m", "reaper_mcp"]
+      }
+    }
+  }
+}
+```
+
 ## ReaPack package in this repo
 
-`reapack/index.xml` ships the bridge script (`bridge/reaper_mcp_bridge.lua`) as a ReaPack package so users can install and auto-update it directly from REAPER.
+`index.xml` ships the bridge script (`bridge/reaper_mcp_bridge.lua`) as a ReaPack package so users can install and auto-update it directly from REAPER.
 
 ## Architecture
 
