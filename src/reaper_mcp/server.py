@@ -147,6 +147,90 @@ def set_track_properties(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Media items
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def move_media_item(
+    track_index: int,
+    item_index: int,
+    position: float,
+) -> dict[str, Any]:
+    """Move a media item to a new timeline position (seconds)."""
+    try:
+        return _wrap(
+            adapter.move_media_item(
+                track_index=track_index, item_index=item_index, position=position
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def resize_media_item(
+    track_index: int,
+    item_index: int,
+    length: float,
+) -> dict[str, Any]:
+    """Change the length of a media item (seconds)."""
+    try:
+        return _wrap(
+            adapter.resize_media_item(
+                track_index=track_index, item_index=item_index, length=length
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def delete_media_item(track_index: int, item_index: int) -> dict[str, Any]:
+    """Delete a media item from a track."""
+    try:
+        return _wrap(
+            adapter.delete_media_item(track_index=track_index, item_index=item_index)
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def get_item_properties(track_index: int, item_index: int) -> dict[str, Any]:
+    """
+    Return properties of a media item: position, length, mute, lock, take name,
+    playrate, and pitch.
+    """
+    try:
+        return _wrap(
+            adapter.get_item_properties(track_index=track_index, item_index=item_index)
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def duplicate_track(track_index: int) -> dict[str, Any]:
+    """Duplicate a track, inserting the copy immediately after the original."""
+    try:
+        return _wrap(adapter.duplicate_track(track_index=track_index))
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def duplicate_item(track_index: int, item_index: int) -> dict[str, Any]:
+    """Duplicate a media item on its track."""
+    try:
+        return _wrap(
+            adapter.duplicate_item(track_index=track_index, item_index=item_index)
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
 @mcp.tool()
 def create_midi_item(
     track_index: int,

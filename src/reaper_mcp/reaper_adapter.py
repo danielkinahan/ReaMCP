@@ -76,6 +76,54 @@ class ReaperAdapter:
     # Media items
     # ------------------------------------------------------------------
 
+    def move_media_item(
+        self, track_index: int, item_index: int, position: float
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "move_media_item",
+            track_index=track_index,
+            item_index=item_index,
+            position=position,
+        )
+
+    def resize_media_item(
+        self, track_index: int, item_index: int, length: float
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "resize_media_item",
+            track_index=track_index,
+            item_index=item_index,
+            length=length,
+        )
+
+    def delete_media_item(
+        self, track_index: int, item_index: int
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "delete_media_item",
+            track_index=track_index,
+            item_index=item_index,
+        )
+
+    def get_item_properties(
+        self, track_index: int, item_index: int
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "get_item_properties",
+            track_index=track_index,
+            item_index=item_index,
+        )
+
+    def duplicate_track(self, track_index: int) -> dict[str, Any]:
+        return self._client.call("duplicate_track", track_index=track_index)
+
+    def duplicate_item(self, track_index: int, item_index: int) -> dict[str, Any]:
+        return self._client.call(
+            "duplicate_item",
+            track_index=track_index,
+            item_index=item_index,
+        )
+
     def create_midi_item(
         self,
         track_index: int,

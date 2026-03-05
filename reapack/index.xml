@@ -3,10 +3,10 @@
   <category name="Scripts">
     <reapack name="ReaMCP - Setup Helper.lua" type="script" desc="Quick setup checklist for ReaMCP bridge and server.">
       <metadata>
-        <link rel="website">https://raw.githubusercontent.com/danielkinahan/ReaMCP/main/reapack/ReaperMCP_Setup_Helper.lua</link>
+        <link rel="website">https://raw.githubusercontent.com/danielkinahan/ReaMCP/main/reapack/ReaMCP_Setup_Helper.lua</link>
       </metadata>
       <version name="0.1.0" author="Daniel Kinahan" time="2026-03-04T00:00:00Z">
-        <source file="ReaperMCP_Setup_Helper.lua" main="true">https://raw.githubusercontent.com/danielkinahan/ReaMCP/main/reapack/ReaperMCP_Setup_Helper.lua</source>
+        <source file="ReaMCP_Setup_Helper.lua" main="true">https://raw.githubusercontent.com/danielkinahan/ReaMCP/main/reapack/ReaMCP_Setup_Helper.lua</source>
       </version>
     </reapack>
   </category>

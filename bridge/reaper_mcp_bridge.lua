@@ -291,6 +291,114 @@ handlers.set_track_properties = function(p)
   return track_info(track, p.track_index)
 end
 
+-- Move a media item to a new timeline position
+-- params: track_index, item_index (0-based), position (seconds)
+handlers.move_media_item = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  reaper.SetMediaItemInfo_Value(item, 'D_POSITION', p.position)
+  reaper.UpdateArrange()
+  return {
+    track_index = p.track_index,
+    item_index  = p.item_index,
+    position    = reaper.GetMediaItemInfo_Value(item, 'D_POSITION'),
+  }
+end
+
+-- Resize a media item (change its length)
+-- params: track_index, item_index, length (seconds)
+handlers.resize_media_item = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  reaper.SetMediaItemInfo_Value(item, 'D_LENGTH', p.length)
+  reaper.UpdateArrange()
+  return {
+    track_index = p.track_index,
+    item_index  = p.item_index,
+    length      = reaper.GetMediaItemInfo_Value(item, 'D_LENGTH'),
+  }
+end
+
+-- Delete a media item
+-- params: track_index, item_index
+handlers.delete_media_item = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  reaper.DeleteTrackMediaItem(track, item)
+  reaper.UpdateArrange()
+  return { deleted = true, track_index = p.track_index, item_index = p.item_index }
+end
+
+-- Get properties of a media item (position, length, mute, take info)
+-- params: track_index, item_index
+handlers.get_item_properties = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  local position = reaper.GetMediaItemInfo_Value(item, 'D_POSITION')
+  local length   = reaper.GetMediaItemInfo_Value(item, 'D_LENGTH')
+  local mute     = reaper.GetMediaItemInfo_Value(item, 'B_MUTE')
+  local lock     = reaper.GetMediaItemInfo_Value(item, 'C_LOCK')
+  local take     = reaper.GetActiveTake(item)
+  local take_name, playrate, pitch = '', 1.0, 0.0
+  if take then
+    take_name = reaper.GetTakeName(take)
+    playrate  = reaper.GetMediaItemTakeInfo_Value(take, 'D_PLAYRATE')
+    pitch     = reaper.GetMediaItemTakeInfo_Value(take, 'D_PITCH')
+  end
+  return {
+    track_index = p.track_index,
+    item_index  = p.item_index,
+    position    = position,
+    length      = length,
+    mute        = (mute ~= 0),
+    lock        = (lock ~= 0),
+    take_name   = take_name,
+    playrate    = playrate,
+    pitch       = pitch,
+  }
+end
+
+-- Duplicate a track (inserts copy immediately after)
+-- params: track_index
+handlers.duplicate_track = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  -- Deselect all tracks, select only target, run Duplicate action
+  reaper.Main_OnCommand(40297, 0)  -- Track: Unselect all tracks
+  reaper.SetTrackSelected(track, true)
+  reaper.Main_OnCommand(40062, 0)  -- Track: Duplicate tracks
+  local new_idx = p.track_index + 1
+  local new_track = reaper.GetTrack(0, new_idx)
+  reaper.UpdateArrange()
+  if not new_track then return { duplicated = true, new_track_index = new_idx } end
+  return track_info(new_track, new_idx)
+end
+
+-- Duplicate a media item (inserts copy immediately after original)
+-- params: track_index, item_index
+handlers.duplicate_item = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  -- Deselect all items, select target, duplicate
+  reaper.Main_OnCommand(40289, 0)  -- Item: Unselect all items
+  reaper.SetMediaItemSelected(item, true)
+  reaper.Main_OnCommand(40698, 0)  -- Item: Duplicate items
+  reaper.UpdateArrange()
+  -- The duplicate appears after the original at the same position + length
+  local n_items = reaper.CountTrackMediaItems(track)
+  return { duplicated = true, track_index = p.track_index, n_items = n_items }
+end
+
 -- Create MIDI item (with optional notes)
 -- notes: list of {start_ppq, end_ppq, pitch, velocity=100, channel=0}
 handlers.create_midi_item = function(p)
