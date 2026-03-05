@@ -737,6 +737,20 @@ handlers.get_project_parameters = function(_p)
   }
 end
 
+-- Save the current project
+handlers.save_project = function(_p)
+  local path = reaper.GetProjectPath('')
+  reaper.Main_SaveProject(0, false)
+  return { saved = true, path = path }
+end
+
+-- Trigger REAPER undo
+handlers.undo = function(_p)
+  local label = reaper.Undo_CanUndo2(0)
+  reaper.Main_OnCommand(40029, 0)  -- Edit: Undo
+  return { undone = true, action = tostring(label) }
+end
+
 -- ---------------------------------------------------------------------------
 -- JSON-RPC dispatcher
 -- ---------------------------------------------------------------------------

@@ -320,3 +320,12 @@ class ReaperAdapter:
             parameter=parameter,
             value=value,
         )
+    # ------------------------------------------------------------------
+    # Project operations
+    # ------------------------------------------------------------------
+
+    def save_project(self) -> dict[str, Any]:
+        return self._client.call("save_project")
+
+    def undo(self) -> dict[str, Any]:
+        return self._client.call("undo")

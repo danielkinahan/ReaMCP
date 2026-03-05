@@ -553,6 +553,29 @@ def set_project_parameter(parameter: str, value: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Project operations
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def save_project() -> dict[str, Any]:
+    """Save the current REAPER project to disk."""
+    try:
+        return _wrap(adapter.save_project())
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def undo() -> dict[str, Any]:
+    """Trigger REAPER's undo. Returns the name of the action that was undone."""
+    try:
+        return _wrap(adapter.undo())
+    except Exception as exc:
+        return _err(exc)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
