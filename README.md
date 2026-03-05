@@ -2,6 +2,8 @@
 
 ReaMCP is a Reaper MCP for controlling and editing projects in your DAW. Connect this to agentic editors like Claude Desktop, VS Code or Zed to make use of the querying and editing tools in Reaper.
 
+This project is currently in its alpha stage. Keep a backup your projects and report any issues you find. This is tested using Linux but I'd like to make it compatible with all operating systems.
+
 
 ## How this differs from similar projects
 
@@ -18,17 +20,21 @@ There are a few other REAPER MCP servers. Here's how they compare:
 - Read project and track state
 - Create, duplicate, and delete tracks and media items
 - Move and resize media items on the timeline
-- Create MIDI items; read, insert, modify, and delete MIDI notes, CC, pitch bend, and program change events
+- Create MIDI items; read, insert, modify, and delete MIDI notes, CC, pitch bend, and program change events; batch-edit and humanize notes
 - Insert audio files onto tracks
 - Control transport and cursor position
-- Add, list, and remove FX; read/write FX parameters; bypass/enable FX; list available FX presets by name
+- Add, list, and remove FX (including on the master track); read/write FX parameters; bypass/enable FX; load presets by name with case-insensitive fallback enumeration
 - Read and set tempo/time signature and project parameters
 - Save the project and trigger undo
 - Add, list, and delete markers and regions
 - Open project files by path
 - Create, remove, and adjust track sends (volume and pan)
 - Set track recording input and input monitoring mode
-- Read and insert automation envelope points
+- Read and insert automation envelope points; clear envelopes; insert beat-aligned points
+- Copy and repeat time ranges (duplicate chorus, extend outro, etc.)
+- Render a time range to an audio file
+- Measure loudness (LUFS integrated, short-term, momentary, true peak) for individual tracks or the master mix via non-destructive dry-run render
+- Normalize track volume to a target LUFS level in one call
 
 ## Requirements
 
@@ -115,8 +121,8 @@ Optional environment variables:
 | `set_fx_param` | Set FX parameter (normalized `0.0–1.0`) |
 | `set_fx_enabled` | Enable or bypass an FX plugin |
 | `remove_fx` | Remove an FX from the chain |
-| `set_fx_preset` | Load a named FX preset (works for plugins that expose a VST program bank) |
-| `list_fx_presets` | List presets for a plugin by scanning vendor preset directories on disk |
+| `set_fx_preset` | Load a named FX preset; falls back to index-scan with case-insensitive matching. Use `track_index=-1` for master track |
+| `list_fx_presets` | List factory and file-based presets for a plugin already on a track |
 | `get_tempo` | Read BPM and time signature |
 | `set_tempo` | Set BPM and optional time signature |
 | `set_project_parameter` | Set `loop_start`, `loop_end`, `loop_enabled`, `cursor_position`, `playrate` |
@@ -128,10 +134,20 @@ Optional environment variables:
 | `set_track_send` | Set send volume and pan |
 | `get_envelope_points` | Read all automation envelope points |
 | `insert_envelope_point` | Insert an automation envelope point |
+| `clear_envelope_points` | Remove all points from an envelope |
+| `insert_envelope_point_at_beat` | Insert an automation point aligned to a musical beat position |
+| `get_track_items` | List all media items on a track with position, length, and take info |
+| `set_midi_notes` | Batch-edit multiple MIDI notes in one call |
+| `nudge_midi_notes` | Humanize all notes in a MIDI item with random timing and velocity offsets |
+| `duplicate_time_range` | Copy all items in a time range and paste them N times after the selection |
+| `render_time_selection` | Render a time range to an audio file using REAPER's render pipeline |
+| `analyze_track_loudness` | Measure integrated loudness (LUFS), short-term/momentary max, and true peak for a single track via non-destructive dry-run render |
+| `analyze_master_loudness` | Same as above but for the full master mix |
+| `normalize_track` | Measure track loudness and adjust the fader to hit a target LUFS level (default -14 LUFS) |
 
 ## Limitations
 
-**Preset loading** — `set_fx_preset` only works for plugins that expose named programs through the standard VST/CLAP program-bank API. Many commercial plugins (e.g. FabFilter, NI) use proprietary binary preset formats and do not implement this API, so programmatic preset loading is not possible for those plugins. `list_fx_presets` can discover preset files on disk, but loading them is not supported.
+**Preset loading** — `set_fx_preset` first tries `TrackFX_SetPreset` (works for plugins with a standard VST/CLAP program bank), then falls back to enumerating all presets by index with case-insensitive name matching via `TrackFX_SetPresetByIndex`. This covers most plugins. File-based presets (`.ffp`, `.fxp`) can be loaded by passing the absolute file path as `preset_name`. Use `list_fx_presets` to discover available factory and file presets.
 
 ## MCP client configuration
 

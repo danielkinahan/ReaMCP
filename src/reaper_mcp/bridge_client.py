@@ -51,7 +51,7 @@ class BridgeClient:
                 "Make sure REAPER is running and reaper_mcp_bridge.lua is active. "
                 f"Details: {exc}"
             ) from exc
-        sock.settimeout(10.0)  # per-call timeout after connection
+        sock.settimeout(120.0)  # per-call timeout after connection (long enough for dry-run renders)
         self._sock = sock
         self._file = sock.makefile("r", encoding="utf-8")
 

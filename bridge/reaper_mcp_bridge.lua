@@ -9,6 +9,7 @@
 
 local HOST = "127.0.0.1"
 local PORT = 9001
+local BRIDGE_VERSION = "0.2.0"
 
 -- ---------------------------------------------------------------------------
 -- Logging
@@ -169,7 +170,8 @@ end
 -- Helpers
 -- ---------------------------------------------------------------------------
 local function track_at(idx)
-  -- idx is 0-based from the client side
+  -- idx is 0-based from the client side; -1 means the master track
+  if idx == -1 then return reaper.GetMasterTrack(0) end
   return reaper.GetTrack(0, idx)
 end
 
@@ -215,7 +217,7 @@ local function get_tempo_info()
   local num, denom = 4, 4
   local n = reaper.CountTempoTimeSigMarkers(0)
   if n > 0 then
-    local _, _, _, _, _, mk_bpm, mk_num, mk_denom = reaper.GetTempoTimeSigMarker(0, 0)
+    local _, _, _, _, mk_bpm, mk_num, mk_denom = reaper.GetTempoTimeSigMarker(0, 0)
     if mk_bpm and mk_bpm > 0 then bpm = mk_bpm end
     if mk_num  and mk_num  > 0 then num   = mk_num  end
     if mk_denom and mk_denom > 0 then denom = mk_denom end
@@ -225,7 +227,7 @@ end
 
 -- Connectivity check
 handlers.ping = function(_p)
-  return { pong = true, reaper_version = reaper.GetAppVersion() }
+  return { pong = true, bridge_version = BRIDGE_VERSION, reaper_version = reaper.GetAppVersion() }
 end
 
 -- Project metadata
@@ -337,6 +339,9 @@ handlers.resize_media_item = function(p)
   }
 end
 
+-- Trim trailing silence from a media item by scanning samples with the audio accessor.
+-- params: track_index, item_index, threshold_db (default -60)
+-- Shrinks the item's right edge to just after the last non-silent frame.
 -- Delete a media item
 -- params: track_index, item_index
 handlers.delete_media_item = function(p)
@@ -361,22 +366,31 @@ handlers.get_item_properties = function(p)
   local mute     = reaper.GetMediaItemInfo_Value(item, 'B_MUTE')
   local lock     = reaper.GetMediaItemInfo_Value(item, 'C_LOCK')
   local take     = reaper.GetActiveTake(item)
-  local take_name, playrate, pitch = '', 1.0, 0.0
+  local take_name, playrate, pitch, source_length_s, start_offset = '', 1.0, 0.0, nil, 0.0
   if take then
-    take_name = reaper.GetTakeName(take)
-    playrate  = reaper.GetMediaItemTakeInfo_Value(take, 'D_PLAYRATE')
-    pitch     = reaper.GetMediaItemTakeInfo_Value(take, 'D_PITCH')
+    take_name    = reaper.GetTakeName(take)
+    playrate     = reaper.GetMediaItemTakeInfo_Value(take, 'D_PLAYRATE')
+    pitch        = reaper.GetMediaItemTakeInfo_Value(take, 'D_PITCH')
+    start_offset = reaper.GetMediaItemTakeInfo_Value(take, 'D_STARTOFFS')
+    local source = reaper.GetMediaItemTake_Source(take)
+    if source then
+      -- GetMediaSourceLength: pass false to get length in seconds (not QN)
+      local src_len, is_qn = reaper.GetMediaSourceLength(source, false)
+      if not is_qn then source_length_s = src_len end
+    end
   end
   return {
-    track_index = p.track_index,
-    item_index  = p.item_index,
-    position    = position,
-    length      = length,
-    mute        = (mute ~= 0),
-    lock        = (lock ~= 0),
-    take_name   = take_name,
-    playrate    = playrate,
-    pitch       = pitch,
+    track_index      = p.track_index,
+    item_index       = p.item_index,
+    position         = position,
+    length           = length,
+    mute             = (mute ~= 0),
+    lock             = (lock ~= 0),
+    take_name        = take_name,
+    playrate         = playrate,
+    pitch            = pitch,
+    start_offset     = start_offset,      -- source offset (seconds) where take playback starts
+    source_length_s  = source_length_s,   -- total source file duration in seconds
   }
 end
 
@@ -602,8 +616,11 @@ handlers.add_fx = function(p)
   local track = track_at(p.track_index)
   if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
   local input_fx = p.input_fx and true or false
+  -- Strip decorated suffixes that GetFXName appends (e.g. "!!!VSTi", "!!!VST3", "!!!JS")
+  -- so that names copied from list_fx work transparently.
+  local search_name = tostring(p.fx_name):gsub('!!!%S+$', ''):match('^%s*(.-)%s*$')
   -- -1 as last argument = add to end; -1000 - desired idx = insert at position
-  local fx_idx = reaper.TrackFX_AddByName(track, p.fx_name, input_fx, -1)
+  local fx_idx = reaper.TrackFX_AddByName(track, search_name, input_fx, -1)
   if fx_idx < 0 then error('FX not found: ' .. tostring(p.fx_name)) end
   local _, fx_name_out = reaper.TrackFX_GetFXName(track, fx_idx, '')
   return { track_index = p.track_index, fx_index = fx_idx, fx_name = fx_name_out }
@@ -684,19 +701,64 @@ end
 handlers.set_fx_preset = function(p)
   local track = track_at(p.track_index)
   if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
-  local ok = false
-  -- If given an absolute path (full path to .ffp / .fxp / .fxb), load via presetfile param
-  if p.preset_name:sub(1, 1) == '/' or p.preset_name:match('^%a:\\') then
-    ok = reaper.TrackFX_SetNamedConfigParm(track, p.fx_index, 'presetfile', p.preset_name)
-    if not ok then
-      -- fallback: try TrackFX_SetPreset with the full path anyway
-      ok = reaper.TrackFX_SetPreset(track, p.fx_index, p.preset_name)
-    end
-  else
-    ok = reaper.TrackFX_SetPreset(track, p.fx_index, p.preset_name)
+
+  local n_fx = reaper.TrackFX_GetCount(track)
+  if p.fx_index < 0 or p.fx_index >= n_fx then
+    error('FX index out of range: ' .. tostring(p.fx_index) .. ' (track has ' .. n_fx .. ' FX)')
   end
-  local _, current = reaper.TrackFX_GetPreset(track, p.fx_index, '')
-  return { loaded = ok, track_index = p.track_index, fx_index = p.fx_index, preset = current }
+
+  local function get_preset_name()
+    local _, name = reaper.TrackFX_GetPreset(track, p.fx_index, '')
+    return name or ''
+  end
+
+  -- Absolute file path (.ffp / .fxp / .fxb)
+  local is_path = p.preset_name:sub(1, 1) == '/' or p.preset_name:match('^%a:\\')
+  if is_path then
+    local f = io.open(p.preset_name, 'rb')
+    if not f then error('Preset file unreadable or not found: ' .. p.preset_name) end
+    f:close()
+    local ok = reaper.TrackFX_SetNamedConfigParm(track, p.fx_index, 'presetfile', p.preset_name)
+    if not ok then ok = reaper.TrackFX_SetPreset(track, p.fx_index, p.preset_name) end
+    local result = { loaded = ok, track_index = p.track_index, fx_index = p.fx_index, preset = get_preset_name() }
+    if not ok then result.failure_reason = 'plugin_rejected_state' end
+    return result
+  end
+
+  -- Try direct name match first (fast path — works when the name matches exactly)
+  if reaper.TrackFX_SetPreset(track, p.fx_index, p.preset_name) then
+    return { loaded = true, track_index = p.track_index, fx_index = p.fx_index, preset = get_preset_name() }
+  end
+
+  -- TrackFX_SetPreset failed — enumerate all presets and find by case-insensitive match,
+  -- then load via TrackFX_SetPresetByIndex (which is more reliable than name matching).
+  local orig_idx, n_presets = reaper.TrackFX_GetPresetIndex(track, p.fx_index)
+  if n_presets == 0 then
+    return { loaded = false, failure_reason = 'plugin_has_no_presets',
+             track_index = p.track_index, fx_index = p.fx_index, preset = get_preset_name() }
+  end
+
+  local target = p.preset_name:lower()
+  local found_idx = nil
+  for i = 0, n_presets - 1 do
+    reaper.TrackFX_SetPresetByIndex(track, p.fx_index, i)
+    local iname = get_preset_name()
+    if iname:lower() == target then
+      found_idx = i
+      break
+    end
+  end
+
+  if found_idx then
+    -- Already loaded via SetPresetByIndex inside the loop; confirm and return success
+    reaper.TrackFX_SetPresetByIndex(track, p.fx_index, found_idx)
+    return { loaded = true, track_index = p.track_index, fx_index = p.fx_index, preset = get_preset_name() }
+  end
+
+  -- Not found — restore original preset and report failure
+  reaper.TrackFX_SetPresetByIndex(track, p.fx_index, orig_idx)
+  return { loaded = false, failure_reason = 'preset_name_not_found',
+           track_index = p.track_index, fx_index = p.fx_index, preset = get_preset_name() }
 end
 
 -- List available presets for a plugin by name.
@@ -797,6 +859,92 @@ handlers.list_fx_presets = function(p)
            count = #results, presets = results }
 end
 
+-- List available presets for an FX already on a track.
+-- Returns both file-based presets (disk scan) and factory presets (via plugin enumeration).
+-- params: track_index, fx_index
+handlers.list_fx_presets = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local n_fx = reaper.TrackFX_GetCount(track)
+  if p.fx_index < 0 or p.fx_index >= n_fx then
+    error('FX index out of range: ' .. tostring(p.fx_index))
+  end
+
+  -- TrackFX_GetPresetIndex returns (current_index, numberOfPresets)
+  local saved_idx, n_presets = reaper.TrackFX_GetPresetIndex(track, p.fx_index)
+  local _, current_preset = reaper.TrackFX_GetPreset(track, p.fx_index, '')
+  local factory_presets = {}
+
+  if n_presets > 0 then
+    -- Remember which preset is active so we can restore it after enumeration
+    for i = 0, n_presets - 1 do
+      reaper.TrackFX_SetPresetByIndex(track, p.fx_index, i)
+      local _, pname = reaper.TrackFX_GetPreset(track, p.fx_index, '')
+      table.insert(factory_presets, { index = i, name = pname, source = 'factory' })
+    end
+    -- Restore the original preset
+    reaper.TrackFX_SetPresetByIndex(track, p.fx_index, saved_idx)
+  end
+
+  -- Also scan disk for file-based presets (.ffp / .fxp)
+  local _, fx_name_full = reaper.TrackFX_GetFXName(track, p.fx_index, '')
+  local fx_name = fx_name_full:gsub('!!!%S+$', ''):match('^%s*(.-)%s*$')
+  local short = fx_name:match('^(.-)%s*%([^)]+%)%s*$') or fx_name
+  local vendor = fx_name:match('%(([^)]+)%)%s*$') or ''
+  local home = os.getenv('HOME') or ''
+  local res  = reaper.GetResourcePath()
+
+  local search_dirs = {}
+  if vendor ~= '' then
+    table.insert(search_dirs, home .. '/Documents/' .. vendor .. '/Presets/' .. short)
+    table.insert(search_dirs, home .. '/Documents/' .. vendor .. '/Presets/' .. fx_name)
+  end
+  table.insert(search_dirs, home .. '/Documents/Presets/' .. short)
+  table.insert(search_dirs, home .. '/Documents/Presets/' .. fx_name)
+  table.insert(search_dirs, res  .. '/presets/' .. short)
+  table.insert(search_dirs, res  .. '/presets/' .. fx_name)
+
+  local file_presets = {}
+  for _, dir in ipairs(search_dirs) do
+    local probe = io.popen('ls -1 "' .. dir .. '" 2>/dev/null')
+    if probe then
+      local listing = probe:read('*a')
+      probe:close()
+      if listing and listing ~= '' then
+        local pipe = io.popen('find "' .. dir .. '" \\( -name "*.ffp" -o -name "*.fxp" \\) 2>/dev/null')
+        if pipe then
+          for line in pipe:lines() do
+            line = line:match('^%s*(.-)%s*$')
+            local rel  = line:sub(#dir + 2)
+            local cat, pname = rel:match('^(.*)/([^/]+)$')
+            if not cat then cat = ''; pname = rel end
+            pname = pname:match('^(.+)%.[^.]+$') or pname
+            table.insert(file_presets, { name = pname, category = cat, path = line, source = 'file' })
+          end
+          pipe:close()
+        end
+        break
+      end
+    end
+  end
+
+  table.sort(file_presets, function(a, b)
+    if a.category ~= b.category then return a.category < b.category end
+    return a.name < b.name
+  end)
+
+  return {
+    track_index     = p.track_index,
+    fx_index        = p.fx_index,
+    fx_name         = fx_name_full,
+    current_preset  = current_preset,
+    factory_count   = #factory_presets,
+    factory_presets = factory_presets,
+    file_count      = #file_presets,
+    file_presets    = file_presets,
+  }
+end
+
 -- Set tempo (and optionally time signature)
 handlers.set_tempo = function(p)
   local bpm   = p.bpm
@@ -808,7 +956,7 @@ handlers.set_tempo = function(p)
     reaper.SetTempoTimeSigMarker(0, -1, 0, 0, 0, bpm, num, denom, false)
   else
     -- Update the first existing marker
-    local _, _, _, _, _, cur_bpm, cur_num, cur_denom = reaper.GetTempoTimeSigMarker(0, 0)
+    local _, _, _, _, cur_bpm, cur_num, cur_denom = reaper.GetTempoTimeSigMarker(0, 0)
     local num   = p.time_sig_num   or cur_num
     local denom = p.time_sig_denom or cur_denom
     reaper.SetTempoTimeSigMarker(0, 0, 0, -1, -1, bpm, num, denom, false)
@@ -866,7 +1014,191 @@ handlers.save_project = function(_p)
   return { saved = true, path = path }
 end
 
+-- Render a time range to a file using REAPER's built-in render pipeline.
+-- params: output_path (absolute path incl. extension), start_time, end_time,
+--         sample_rate (default 0 = project rate), channels (1 or 2, default 2)
+-- Returns: output_path, duration, file_size_bytes once render completes.
+handlers.render_time_selection = function(p)
+  if not p.output_path or p.output_path == '' then error('output_path is required') end
+  if not p.start_time or not p.end_time then error('start_time and end_time are required') end
+  if p.end_time <= p.start_time then error('end_time must be greater than start_time') end
+
+  -- Set the time selection that RENDER_BOUNDSFLAG=2 will use
+  reaper.GetSet_LoopTimeRange(true, false, p.start_time, p.end_time, false)
+
+  -- Configure render settings
+  reaper.GetSetProjectInfo_String(0, 'RENDER_FILE', p.output_path, true)
+  reaper.GetSetProjectInfo(0, 'RENDER_BOUNDSFLAG', 2, true)   -- 2 = time selection
+  reaper.GetSetProjectInfo(0, 'RENDER_ADDTOPROJ',  0, true)   -- don't import result
+  if p.sample_rate and p.sample_rate > 0 then
+    reaper.GetSetProjectInfo(0, 'RENDER_SRATE', p.sample_rate, true)
+  end
+  if p.channels then
+    reaper.GetSetProjectInfo(0, 'RENDER_CHANNELS', p.channels, true)
+  end
+
+  -- Action 41824: "File: Render project, using the most recent render settings"
+  -- This blocks until rendering is complete.
+  reaper.Main_OnCommand(41824, 0)
+
+  -- Verify output was written
+  local f = io.open(p.output_path, 'rb')
+  local file_size = 0
+  if f then
+    file_size = f:seek('end')
+    f:close()
+  else
+    -- REAPER may append an extension; try to detect it
+    local alt = p.output_path .. '.wav'
+    local f2 = io.open(alt, 'rb')
+    if f2 then
+      file_size = f2:seek('end')
+      f2:close()
+      p.output_path = alt
+    end
+  end
+
+  return {
+    output_path  = p.output_path,
+    start_time   = p.start_time,
+    end_time     = p.end_time,
+    duration     = p.end_time - p.start_time,
+    file_size_bytes = file_size,
+  }
+end
+
+-- Analyse audio on a track over a time range.
+-- Renders the track to a stereo stem in-place (action 40728) so that VST
+-- instrument output is captured, then reads the rendered item with a take
+-- Measure loudness of a single track over a time range (non-destructive dry-run).
+-- Uses action 42439: "Calculate loudness of selected tracks within time selection via dry run render".
+-- params: track_index, start_time, end_time
+handlers.analyze_track_loudness = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+
+  local t1 = p.start_time or 0
+  local t2 = p.end_time   or reaper.GetProjectLength(0)
+  if t2 <= t1 then error('end_time must be greater than start_time') end
+
+  -- Select only this track and set the time selection
+  reaper.SetOnlyTrackSelected(track)
+  reaper.GetSet_LoopTimeRange(true, false, t1, t2, false)
+
+  -- Action 42439: "Calculate loudness of selected tracks within time selection via dry run render"
+  -- Runs a silent render pass to measure loudness; no files written, project unchanged.
+  reaper.Main_OnCommand(42439, 0)
+
+  -- Read the loudness statistics written by the action into the project
+  local _, stats_str = reaper.GetSetProjectInfo_String(0, 'RENDER_STATS', '', false)
+  stats_str = stats_str or ''
+
+  -- Parse KEY:VALUE;KEY:VALUE format written by REAPER's loudness actions
+  local stats = {}
+  for key, val in stats_str:gmatch('([^:;]+):([^;]+)') do
+    stats[key:upper():match('^%s*(.-)%s*$')] = tonumber(val) or val
+  end
+
+  return {
+    track_index       = p.track_index,
+    start_time        = t1,
+    end_time          = t2,
+    duration          = t2 - t1,
+    lufs_i            = stats['LUFSI'],
+    lufs_s_max        = stats['LUFSSMAX'],
+    lufs_m_max        = stats['LUFSMMAX'],
+    true_peak_db      = stats['PEAK'],
+    raw_stats         = stats_str,
+    render_stats_html = '/tmp/render_stats.html',
+  }
+end
+
+
 -- Trigger REAPER undo
+-- Measure loudness of the full master mix over a time range (non-destructive dry-run).
+-- Uses action 42441: "Calculate loudness of master mix within time selection via dry run render".
+-- params: start_time, end_time
+handlers.analyze_master_loudness = function(p)
+  local t1 = p.start_time or 0
+  local t2 = p.end_time   or reaper.GetProjectLength(0)
+  if t2 <= t1 then error('end_time must be greater than start_time') end
+
+  reaper.GetSet_LoopTimeRange(true, false, t1, t2, false)
+
+  -- Action 42441: "Calculate loudness of master mix within time selection via dry run render"
+  reaper.Main_OnCommand(42441, 0)
+
+  local _, stats_str = reaper.GetSetProjectInfo_String(0, 'RENDER_STATS', '', false)
+  stats_str = stats_str or ''
+
+  local stats = {}
+  for key, val in stats_str:gmatch('([^:;]+):([^;]+)') do
+    stats[key:upper():match('^%s*(.-)%s*$')] = tonumber(val) or val
+  end
+
+  return {
+    start_time        = t1,
+    end_time          = t2,
+    duration          = t2 - t1,
+    lufs_i            = stats['LUFSI'],
+    lufs_s_max        = stats['LUFSSMAX'],
+    lufs_m_max        = stats['LUFSMMAX'],
+    true_peak_db      = stats['PEAK'],
+    raw_stats         = stats_str,
+    render_stats_html = '/tmp/render_stats.html',
+  }
+end
+
+-- Normalize a track to a target integrated loudness level over a time range.
+-- Measures current LUFS via dry-run render (42439), calculates the required
+-- gain adjustment, and applies it to the track fader.
+-- params: track_index, start_time, end_time, target_lufs (default -14.0)
+handlers.normalize_track = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+
+  local t1          = p.start_time or 0
+  local t2          = p.end_time   or reaper.GetProjectLength(0)
+  local target_lufs = p.target_lufs or -14.0
+  if t2 <= t1 then error('end_time must be greater than start_time') end
+
+  reaper.SetOnlyTrackSelected(track)
+  reaper.GetSet_LoopTimeRange(true, false, t1, t2, false)
+  reaper.Main_OnCommand(42439, 0)  -- dry-run loudness of selected tracks
+
+  local _, stats_str = reaper.GetSetProjectInfo_String(0, 'RENDER_STATS', '', false)
+  stats_str = stats_str or ''
+  local stats = {}
+  for key, val in stats_str:gmatch('([^:;]+):([^;]+)') do
+    stats[key:upper():match('^%s*(.-)%s*$')] = tonumber(val) or val
+  end
+
+  local lufs_i = stats['LUFSI']
+  if not lufs_i then
+    error('Could not read integrated loudness. raw_stats="' .. stats_str .. '"')
+  end
+
+  local gain_db        = target_lufs - lufs_i
+  local old_vol        = reaper.GetMediaTrackInfo_Value(track, 'D_VOL')
+  local gain_linear    = 10 ^ (gain_db / 20)
+  local new_vol        = old_vol * gain_linear
+
+  reaper.SetMediaTrackInfo_Value(track, 'D_VOL', new_vol)
+  reaper.Undo_OnStateChangeEx2(0, 'Normalize track ' .. tostring(p.track_index), -1, -1)
+
+  return {
+    track_index       = p.track_index,
+    start_time        = t1,
+    end_time          = t2,
+    measured_lufs_i   = lufs_i,
+    target_lufs       = target_lufs,
+    gain_applied_db   = math.floor(gain_db * 100 + 0.5) / 100,
+    old_volume_linear = old_vol,
+    new_volume_linear = new_vol,
+    render_stats_html = '/tmp/render_stats.html',
+  }
+end
+
 handlers.undo = function(_p)
   local label = reaper.Undo_CanUndo2(0)
   reaper.Main_OnCommand(40029, 0)  -- Edit: Undo
@@ -880,7 +1212,7 @@ handlers.add_marker = function(p)
   local is_region = p.is_region and true or false
   local color     = p.color or 0
   local rgnend    = p.region_end or p.position
-  local idx = reaper.AddProjectMarker2(0, is_region, p.position, rgnend, p.name or '', color)
+  local idx = reaper.AddProjectMarker2(0, is_region, p.position, rgnend, p.name or '', -1, color)
   return { marker_index = idx, is_region = is_region, position = p.position, name = p.name }
 end
 
@@ -1083,18 +1415,68 @@ end
 -- Automation
 -- ---------------------------------------------------------------------------
 
+-- Built-in envelope action IDs (toggle visible = create if not in chunk)
+local BUILTIN_ENV_ACTIONS = {
+  Volume = 40406, Pan = 40407,
+}
+
+-- Return the named envelope, creating it via action if necessary.
+local function get_or_create_track_envelope(track, env_name)
+  local env = reaper.GetTrackEnvelopeByName(track, env_name)
+  if env then return env end
+
+  local action_id = BUILTIN_ENV_ACTIONS[env_name]
+  if not action_id then return nil end
+
+  -- Select only this track, run the "toggle visible" action (creates if absent),
+  -- then restore the previous selection.
+  local n_sel = reaper.CountSelectedTracks(0)
+  local prev_sel = {}
+  for i = 0, n_sel - 1 do prev_sel[i] = reaper.GetSelectedTrack(0, i) end
+
+  reaper.SetOnlyTrackSelected(track)
+  reaper.Main_OnCommandEx(action_id, 0, 0)  -- creates + shows the envelope
+
+  -- Restore selection
+  if n_sel == 0 then
+    reaper.SetTrackSelected(track, false)
+  else
+    reaper.SetOnlyTrackSelected(prev_sel[0])
+    for i = 1, n_sel - 1 do reaper.SetTrackSelected(prev_sel[i], true) end
+  end
+
+  return reaper.GetTrackEnvelopeByName(track, env_name)
+end
+
+-- Temporary debug: expose the raw track state chunk
+handlers.get_track_chunk = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local ok, chunk = reaper.GetTrackStateChunk(track, '', false)
+  return { ok = ok, chunk = chunk }
+end
+
 -- Read all points from a track envelope
--- params: track_index, envelope_index (0-based index of envelope on the track)
+-- params: track_index, envelope_name (e.g. 'Volume', 'Pan') OR envelope_index (0-based)
 handlers.get_envelope_points = function(p)
   local track = track_at(p.track_index)
   if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
-  local env = reaper.GetTrackEnvelope(track, p.envelope_index)
-  if not env then error('Envelope index out of range: ' .. tostring(p.envelope_index)) end
+  local env
+  if p.envelope_name then
+    env = reaper.GetTrackEnvelopeByName(track, p.envelope_name)
+    if not env then error('Envelope not found: ' .. tostring(p.envelope_name)) end
+  else
+    env = reaper.GetTrackEnvelope(track, p.envelope_index)
+    if not env then error('Envelope index out of range: ' .. tostring(p.envelope_index)) end
+  end
   local _, env_name = reaper.GetEnvelopeName(env, '')
+  local scaling_mode = reaper.GetEnvelopeScalingMode(env)
   local n = reaper.CountEnvelopePoints(env)
   local points = {}
   for i = 0, n - 1 do
-    local _, time, value, shape, tension, selected = reaper.GetEnvelopePoint(env, i)
+    local _, time, raw_value, shape, tension, selected = reaper.GetEnvelopePoint(env, i)
+    -- ScaleFromEnvelopeMode converts raw internal value → normalized (fader pos 0-1 for Volume)
+    local value = reaper.ScaleFromEnvelopeMode(scaling_mode, raw_value)
     table.insert(points, {
       point_index = i,
       time        = time,
@@ -1108,28 +1490,275 @@ handlers.get_envelope_points = function(p)
     track_index    = p.track_index,
     envelope_index = p.envelope_index,
     envelope_name  = env_name,
+    scaling_mode   = scaling_mode,  -- 0=no scaling, 1=fader scaling
     points         = points,
   }
 end
 
+-- Clear all automation envelope points in a time range (default: entire timeline)
+-- params: track_index, envelope_name OR envelope_index, t1 (default 0), t2 (default 1e12)
+handlers.clear_envelope_points = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local env
+  if p.envelope_name then
+    env = reaper.GetTrackEnvelopeByName(track, p.envelope_name)
+    if not env then error('Envelope not found: ' .. tostring(p.envelope_name)) end
+  else
+    env = reaper.GetTrackEnvelope(track, p.envelope_index)
+    if not env then error('Envelope index out of range: ' .. tostring(p.envelope_index)) end
+  end
+  local t1 = p.t1 or 0
+  local t2 = p.t2 or 1e12
+  local n_before = reaper.CountEnvelopePoints(env)
+  reaper.DeleteEnvelopePointRange(env, t1, t2)
+  local n_after = reaper.CountEnvelopePoints(env)
+  return { deleted = n_before - n_after, remaining = n_after }
+end
+
 -- Insert an automation envelope point
--- params: track_index, envelope_index, time, value, shape (0=linear), tension
+-- params: track_index, envelope_name (e.g. 'Volume', 'Pan') OR envelope_index, time, value, shape (0=linear), tension
+-- value is linear amplitude: 0.0=silence, 1.0=0dB, 2.0=+6dB (max) for Volume envelope
 handlers.insert_envelope_point = function(p)
   local track = track_at(p.track_index)
   if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
-  local env = reaper.GetTrackEnvelope(track, p.envelope_index)
-  if not env then error('Envelope index out of range: ' .. tostring(p.envelope_index)) end
+  local env
+  if p.envelope_name then
+    env = get_or_create_track_envelope(track, p.envelope_name)
+    if not env then error('Envelope not found or could not be created: ' .. tostring(p.envelope_name)) end
+  else
+    env = reaper.GetTrackEnvelope(track, p.envelope_index)
+    if not env then error('Envelope index out of range: ' .. tostring(p.envelope_index)) end
+  end
   local shape   = p.shape   or 0
   local tension = p.tension or 0.0
-  reaper.InsertEnvelopePoint(env, p.time, p.value, shape, tension, false, true)
+  -- ScaleToEnvelopeMode converts normalized (fader pos 0-1) → raw internal value
+  local scaling_mode = reaper.GetEnvelopeScalingMode(env)
+  local raw_value = reaper.ScaleToEnvelopeMode(scaling_mode, p.value)
+  reaper.InsertEnvelopePoint(env, p.time, raw_value, shape, tension, false, true)
   reaper.Envelope_SortPoints(env)
   return {
     track_index    = p.track_index,
     envelope_index = p.envelope_index,
     time           = p.time,
-    value          = p.value,
+    value          = p.value,  -- echo back the normalized input
+    raw_value      = raw_value,
     shape          = shape,
     tension        = tension,
+  }
+end
+
+-- Insert an automation envelope point aligned to the project beat grid.
+-- params: track_index, envelope_name OR envelope_index, bar (1-based), beat (1-based, may be fractional),
+--         value, shape (0=linear), tension
+-- bar=1 beat=1 is the project start. beat is counted in the time-sig denominator units of that bar.
+handlers.insert_envelope_point_at_beat = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local env
+  if p.envelope_name then
+    env = get_or_create_track_envelope(track, p.envelope_name)
+    if not env then error('Envelope not found or could not be created: ' .. tostring(p.envelope_name)) end
+  else
+    env = reaper.GetTrackEnvelope(track, p.envelope_index)
+    if not env then error('Envelope index out of range: ' .. tostring(p.envelope_index)) end
+  end
+
+  -- Convert bar+beat → QN position → time in seconds
+  local measure     = (p.bar or 1) - 1   -- TimeMap_GetMeasureInfo uses 0-based measures
+  local beat_in_bar = (p.beat or 1) - 1  -- 0-based within bar
+
+  -- Returns: retval, qn_start, qn_end, timesig_num, timesig_denom, tempo
+  local _, qn_start, _, timesig_num, timesig_denom, tempo =
+    reaper.TimeMap_GetMeasureInfo(0, measure)
+
+  -- Each beat is (4 / timesig_denom) quarter notes (e.g. 1.0 in 4/4, 0.5 in 6/8)
+  local qn_per_beat = 4.0 / timesig_denom
+  local qn_pos      = qn_start + beat_in_bar * qn_per_beat
+  local time        = reaper.TimeMap2_QNToTime(0, qn_pos)
+
+  local shape   = p.shape   or 0
+  local tension = p.tension or 0.0
+  local scaling_mode = reaper.GetEnvelopeScalingMode(env)
+  local raw_value    = reaper.ScaleToEnvelopeMode(scaling_mode, p.value)
+  reaper.InsertEnvelopePoint(env, time, raw_value, shape, tension, false, true)
+  reaper.Envelope_SortPoints(env)
+  return {
+    track_index   = p.track_index,
+    bar           = p.bar,
+    beat          = p.beat,
+    time          = time,
+    value         = p.value,
+    raw_value     = raw_value,
+    shape         = shape,
+    tension       = tension,
+    tempo         = tempo,
+    timesig_num   = timesig_num,
+    timesig_denom = timesig_denom,
+  }
+end
+
+-- List all media items on a track
+-- params: track_index
+handlers.get_track_items = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local n = reaper.CountTrackMediaItems(track)
+  local items = {}
+  for i = 0, n - 1 do
+    local item     = reaper.GetTrackMediaItem(track, i)
+    local position = reaper.GetMediaItemInfo_Value(item, 'D_POSITION')
+    local length   = reaper.GetMediaItemInfo_Value(item, 'D_LENGTH')
+    local mute     = reaper.GetMediaItemInfo_Value(item, 'B_MUTE') ~= 0
+    local take     = reaper.GetActiveTake(item)
+    local take_name, is_midi = '', false
+    if take then
+      take_name = reaper.GetTakeName(take)
+      is_midi   = reaper.TakeIsMIDI(take)
+    end
+    table.insert(items, {
+      item_index = i,
+      position   = position,
+      length     = length,
+      mute       = mute,
+      take_name  = take_name,
+      is_midi    = is_midi,
+    })
+  end
+  return { track_index = p.track_index, count = n, items = items }
+end
+
+-- Batch-edit multiple MIDI notes in one call.
+-- params: track_index, item_index,
+--   notes: list of { note_index, and any of: pitch, velocity, start_ppq, end_ppq, channel, selected, muted }
+-- Only supplied fields are changed; omitted fields keep their current values.
+handlers.set_midi_notes = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  local take = reaper.GetActiveTake(item)
+  if not take or not reaper.TakeIsMIDI(take) then
+    error('Item does not have an active MIDI take')
+  end
+  local updated = {}
+  for _, n in ipairs(p.notes or {}) do
+    local _, sel, muted, startppq, endppq, chan, pitch, vel = reaper.MIDI_GetNote(take, n.note_index)
+    sel      = (n.selected  ~= nil) and n.selected  or sel
+    muted    = (n.muted     ~= nil) and n.muted     or muted
+    startppq = n.start_ppq  ~= nil and n.start_ppq  or startppq
+    endppq   = n.end_ppq    ~= nil and n.end_ppq    or endppq
+    chan     = n.channel    ~= nil and n.channel    or chan
+    pitch    = n.pitch      ~= nil and n.pitch      or pitch
+    vel      = n.velocity   ~= nil and n.velocity   or vel
+    reaper.MIDI_SetNote(take, n.note_index, sel, muted, startppq, endppq, chan, pitch, vel, false)
+    table.insert(updated, { note_index = n.note_index, pitch = pitch, velocity = vel,
+                             start_ppq = startppq, end_ppq = endppq })
+  end
+  reaper.MIDI_Sort(take)
+  return { track_index = p.track_index, item_index = p.item_index, updated = updated, count = #updated }
+end
+
+-- Humanize MIDI notes with random timing and/or velocity nudges.
+-- params: track_index, item_index,
+--   timing_range_ppq  (max ± PPQ offset per note, default 0)
+--   velocity_range    (max ± velocity offset per note, default 0)
+--   seed              (optional integer for reproducible results)
+handlers.nudge_midi_notes = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local item = reaper.GetTrackMediaItem(track, p.item_index)
+  if not item then error('Item index out of range: ' .. tostring(p.item_index)) end
+  local take = reaper.GetActiveTake(item)
+  if not take or not reaper.TakeIsMIDI(take) then
+    error('Item does not have an active MIDI take')
+  end
+
+  local timing_range = p.timing_range_ppq or 0
+  local vel_range    = p.velocity_range   or 0
+  if timing_range == 0 and vel_range == 0 then
+    error('At least one of timing_range_ppq or velocity_range must be non-zero')
+  end
+
+  -- Seed the Lua RNG if requested
+  if p.seed then math.randomseed(p.seed) else math.randomseed(os.time()) end
+
+  local _, note_cnt, _, _ = reaper.MIDI_CountEvts(take)
+  local changes = {}
+  for i = 0, note_cnt - 1 do
+    local _, sel, muted, startppq, endppq, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
+    local new_start = startppq
+    local new_end   = endppq
+    local new_vel   = vel
+
+    if timing_range ~= 0 then
+      local delta = math.floor((math.random() * 2 - 1) * timing_range + 0.5)
+      new_start = math.max(0, startppq + delta)
+      new_end   = math.max(new_start + 1, endppq + delta)  -- preserve note length
+    end
+    if vel_range ~= 0 then
+      local delta = math.floor((math.random() * 2 - 1) * vel_range + 0.5)
+      new_vel = math.max(1, math.min(127, vel + delta))
+    end
+
+    reaper.MIDI_SetNote(take, i, sel, muted, new_start, new_end, chan, pitch, new_vel, false)
+    table.insert(changes, { note_index = i, start_ppq = new_start, end_ppq = new_end, velocity = new_vel })
+  end
+  reaper.MIDI_Sort(take)
+  return { track_index = p.track_index, item_index = p.item_index,
+           count = note_cnt, changes = changes }
+end
+
+-- Copy a time range of items and paste it immediately after the range end.
+-- Useful for extending song form (repeat a chorus, add an outro).
+-- params: start_time, end_time, repeat_count (default 1)
+handlers.duplicate_time_range = function(p)
+  if not p.start_time or not p.end_time then error('start_time and end_time required') end
+  local t1 = p.start_time
+  local t2 = p.end_time
+  if t2 <= t1 then error('end_time must be greater than start_time') end
+  local repeats = p.repeat_count or 1
+
+  -- Use REAPER's built-in time selection + duplicate loop action
+  reaper.GetSet_LoopTimeRange(true, false, t1, t2, false)  -- set time selection
+  -- Action 41311: "Item: Copy loop of selected area of items"
+  -- Action 40060: "Edit: Copy items/tracks/envelope points (depending on focus) within time selection"
+  -- We use the time-selection-based duplicate: select all items in range, copy, paste at end
+  reaper.Main_OnCommand(40289, 0)  -- unselect all items
+  -- Select all items that overlap the time range on all tracks
+  local n_tracks = reaper.CountTracks(0)
+  local copied_items = 0
+  for ti = 0, n_tracks - 1 do
+    local tr = reaper.GetTrack(0, ti)
+    for ii = 0, reaper.CountTrackMediaItems(tr) - 1 do
+      local item = reaper.GetTrackMediaItem(tr, ii)
+      local ipos = reaper.GetMediaItemInfo_Value(item, 'D_POSITION')
+      local ilen = reaper.GetMediaItemInfo_Value(item, 'D_LENGTH')
+      -- Include if item overlaps [t1, t2)
+      if ipos < t2 and (ipos + ilen) > t1 then
+        reaper.SetMediaItemSelected(item, true)
+        copied_items = copied_items + 1
+      end
+    end
+  end
+
+  local duration = t2 - t1
+  local paste_pos = t2
+  for r = 1, repeats do
+    -- Move edit cursor to paste position and duplicate selected items there
+    reaper.SetEditCurPos(paste_pos, false, false)
+    reaper.Main_OnCommand(40698, 0)  -- Item: Duplicate items
+    paste_pos = paste_pos + duration
+  end
+
+  reaper.UpdateArrange()
+  return {
+    start_time    = t1,
+    end_time      = t2,
+    duration      = duration,
+    repeat_count  = repeats,
+    items_in_range = copied_items,
+    new_end_time  = paste_pos,
   }
 end
 

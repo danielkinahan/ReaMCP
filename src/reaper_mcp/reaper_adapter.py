@@ -114,6 +114,9 @@ class ReaperAdapter:
             item_index=item_index,
         )
 
+    def get_track_items(self, track_index: int) -> dict[str, Any]:
+        return self._client.call("get_track_items", track_index=track_index)
+
     def duplicate_track(self, track_index: int) -> dict[str, Any]:
         return self._client.call("duplicate_track", track_index=track_index)
 
@@ -189,6 +192,36 @@ class ReaperAdapter:
     def get_midi_notes(self, track_index: int, item_index: int) -> dict[str, Any]:
         return self._client.call(
             "get_midi_notes", track_index=track_index, item_index=item_index
+        )
+
+    def set_midi_notes(
+        self,
+        track_index: int,
+        item_index: int,
+        notes: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "set_midi_notes",
+            track_index=track_index,
+            item_index=item_index,
+            notes=notes,
+        )
+
+    def nudge_midi_notes(
+        self,
+        track_index: int,
+        item_index: int,
+        timing_range_ppq: float = 0,
+        velocity_range: int = 0,
+        seed: int | None = None,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "nudge_midi_notes",
+            track_index=track_index,
+            item_index=item_index,
+            timing_range_ppq=timing_range_ppq,
+            velocity_range=velocity_range,
+            seed=seed,
         )
 
     def create_midi_item(
@@ -295,12 +328,25 @@ class ReaperAdapter:
         )
 
     def list_fx_presets(
-        self, fx_name: str, category: str | None = None
+        self, track_index: int, fx_index: int
     ) -> dict[str, Any]:
         return self._client.call(
             "list_fx_presets",
-            fx_name=fx_name,
-            category=category,
+            track_index=track_index,
+            fx_index=fx_index,
+        )
+
+    def duplicate_time_range(
+        self,
+        start_time: float,
+        end_time: float,
+        repeat_count: int = 1,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "duplicate_time_range",
+            start_time=start_time,
+            end_time=end_time,
+            repeat_count=repeat_count,
         )
 
     # ------------------------------------------------------------------
@@ -335,6 +381,54 @@ class ReaperAdapter:
 
     def save_project(self) -> dict[str, Any]:
         return self._client.call("save_project")
+
+    def render_time_selection(
+        self,
+        output_path: str,
+        start_time: float,
+        end_time: float,
+        sample_rate: int = 0,
+        channels: int = 2,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "render_time_selection",
+            output_path=output_path,
+            start_time=start_time,
+            end_time=end_time,
+            sample_rate=sample_rate,
+            channels=channels,
+        )
+
+    def analyze_track_loudness(
+        self,
+        track_index: int,
+        start_time: float,
+        end_time: float,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "analyze_track_loudness",
+            track_index=track_index,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+    def analyze_master_loudness(self, start_time: float, end_time: float) -> dict[str, Any]:
+        return self._client.call("analyze_master_loudness", start_time=start_time, end_time=end_time)
+
+    def normalize_track(
+        self,
+        track_index: int,
+        start_time: float,
+        end_time: float,
+        target_lufs: float = -14.0,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "normalize_track",
+            track_index=track_index,
+            start_time=start_time,
+            end_time=end_time,
+            target_lufs=target_lufs,
+        )
 
     def undo(self) -> dict[str, Any]:
         return self._client.call("undo")
@@ -438,20 +532,22 @@ class ReaperAdapter:
     # ------------------------------------------------------------------
 
     def get_envelope_points(
-        self, track_index: int, envelope_index: int
+        self, track_index: int, envelope_index: int | None = None, envelope_name: str | None = None
     ) -> dict[str, Any]:
         return self._client.call(
             "get_envelope_points",
             track_index=track_index,
             envelope_index=envelope_index,
+            envelope_name=envelope_name,
         )
 
     def insert_envelope_point(
         self,
         track_index: int,
-        envelope_index: int,
-        time: float,
-        value: float,
+        envelope_index: int | None = None,
+        envelope_name: str | None = None,
+        time: float = 0.0,
+        value: float = 1.0,
         shape: int = 0,
         tension: float = 0.0,
     ) -> dict[str, Any]:
@@ -459,7 +555,48 @@ class ReaperAdapter:
             "insert_envelope_point",
             track_index=track_index,
             envelope_index=envelope_index,
+            envelope_name=envelope_name,
             time=time,
+            value=value,
+            shape=shape,
+            tension=tension,
+        )
+
+    def clear_envelope_points(
+        self,
+        track_index: int,
+        envelope_index: int | None = None,
+        envelope_name: str | None = None,
+        t1: float = 0.0,
+        t2: float = 1e12,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "clear_envelope_points",
+            track_index=track_index,
+            envelope_index=envelope_index,
+            envelope_name=envelope_name,
+            t1=t1,
+            t2=t2,
+        )
+
+    def insert_envelope_point_at_beat(
+        self,
+        track_index: int,
+        bar: int,
+        beat: float,
+        value: float,
+        envelope_index: int | None = None,
+        envelope_name: str | None = None,
+        shape: int = 0,
+        tension: float = 0.0,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "insert_envelope_point_at_beat",
+            track_index=track_index,
+            envelope_index=envelope_index,
+            envelope_name=envelope_name,
+            bar=bar,
+            beat=beat,
             value=value,
             shape=shape,
             tension=tension,
