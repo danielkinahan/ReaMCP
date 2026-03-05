@@ -846,6 +846,32 @@ handlers.set_track_send = function(p)
 end
 
 -- ---------------------------------------------------------------------------
+-- Recording
+-- ---------------------------------------------------------------------------
+
+-- Set track recording input
+-- params: track_index, input_index
+--   Audio inputs: 0-based channel index
+--   MIDI: use 4096 + (channel<<5) + device (or pass raw I_RECINPUT int)
+handlers.set_track_input = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  reaper.SetMediaTrackInfo_Value(track, 'I_RECINPUT', p.input_index)
+  local actual = reaper.GetMediaTrackInfo_Value(track, 'I_RECINPUT')
+  return { track_index = p.track_index, input_index = actual }
+end
+
+-- Set input monitoring mode
+-- params: track_index, mode (0=off, 1=on, 2=not when playing)
+handlers.set_input_monitoring = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  reaper.SetMediaTrackInfo_Value(track, 'I_RECMON', p.mode)
+  local actual = reaper.GetMediaTrackInfo_Value(track, 'I_RECMON')
+  return { track_index = p.track_index, mode = actual }
+end
+
+-- ---------------------------------------------------------------------------
 -- JSON-RPC dispatcher
 -- ---------------------------------------------------------------------------
 local function handle_line(line)

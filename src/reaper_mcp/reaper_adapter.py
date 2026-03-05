@@ -392,3 +392,26 @@ class ReaperAdapter:
             volume=volume,
             pan=pan,
         )
+
+    # ------------------------------------------------------------------
+    # Recording
+    # ------------------------------------------------------------------
+
+    def set_track_input(
+        self, track_index: int, input_index: int
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "set_track_input",
+            track_index=track_index,
+            input_index=input_index,
+        )
+
+    def set_input_monitoring(
+        self, track_index: int, mode: int
+    ) -> dict[str, Any]:
+        """mode: 0=off, 1=on, 2=not when playing"""
+        return self._client.call(
+            "set_input_monitoring",
+            track_index=track_index,
+            mode=mode,
+        )

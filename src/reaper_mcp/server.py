@@ -688,6 +688,40 @@ def set_track_send(
 
 
 # ---------------------------------------------------------------------------
+# Recording
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def set_track_input(track_index: int, input_index: int) -> dict[str, Any]:
+    """
+    Set the recording input for a track.
+    - For audio: 0-based audio input channel index.
+    - For MIDI: use REAPER's I_RECINPUT encoding (e.g. 4096 + channel*32 + device).
+    """
+    try:
+        return _wrap(
+            adapter.set_track_input(track_index=track_index, input_index=input_index)
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def set_input_monitoring(track_index: int, mode: int) -> dict[str, Any]:
+    """
+    Set input monitoring mode for a track.
+    - mode: 0 = off, 1 = on, 2 = not when playing
+    """
+    try:
+        return _wrap(
+            adapter.set_input_monitoring(track_index=track_index, mode=mode)
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
