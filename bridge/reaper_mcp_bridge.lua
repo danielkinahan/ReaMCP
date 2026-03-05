@@ -205,9 +205,23 @@ local function track_info(track, idx)
 end
 
 -- ---------------------------------------------------------------------------
--- Handlers  (each receives a `params` table and returns a result table)
+-- Helpers  (each receives a `params` table and returns a result table)
 -- ---------------------------------------------------------------------------
 local handlers = {}
+
+-- Returns bpm, time_sig_num, time_sig_denom for the current project
+local function get_tempo_info()
+  local bpm   = reaper.Master_GetTempo()
+  local num, denom = 4, 4
+  local n = reaper.CountTempoTimeSigMarkers(0)
+  if n > 0 then
+    local _, _, _, _, _, mk_bpm, mk_num, mk_denom = reaper.GetTempoTimeSigMarker(0, 0)
+    if mk_bpm and mk_bpm > 0 then bpm = mk_bpm end
+    if mk_num  and mk_num  > 0 then num   = mk_num  end
+    if mk_denom and mk_denom > 0 then denom = mk_denom end
+  end
+  return bpm, num, denom
+end
 
 -- Connectivity check
 handlers.ping = function(_p)
@@ -218,7 +232,7 @@ end
 handlers.get_project_info = function(_p)
   local _, name     = reaper.GetProjectName(0, '')
   local path        = reaper.GetProjectPath('')
-  local bpm, num, denom = reaper.GetTempoTimeSigAtTime(0, 0)
+  local bpm, num, denom = get_tempo_info()
   local play_state  = reaper.GetPlayState()
   local cursor_pos  = reaper.GetCursorPosition()
   local proj_len    = reaper.GetProjectLength(0)
@@ -693,13 +707,13 @@ handlers.set_tempo = function(p)
   end
   reaper.UpdateTimeline()
   -- Read back the authoritative values
-  local new_bpm, new_num, new_denom = reaper.GetTempoTimeSigAtTime(0, 0)
+  local new_bpm, new_num, new_denom = get_tempo_info()
   return { bpm = new_bpm, time_sig_num = new_num, time_sig_denom = new_denom }
 end
 
 -- Get current tempo and time signature
 handlers.get_tempo = function(_p)
-  local bpm, num, denom = reaper.GetTempoTimeSigAtTime(0, 0)
+  local bpm, num, denom = get_tempo_info()
   return { bpm = bpm, time_sig_num = num, time_sig_denom = denom }
 end
 
@@ -795,6 +809,92 @@ handlers.open_project = function(p)
   end
   reaper.Main_openProject(p.file_path)
   return { opened = true, file_path = p.file_path }
+end
+
+-- Create a new blank project (equivalent to File > New Project)
+handlers.new_project = function(_p)
+  reaper.Main_OnCommand(40023, 0)  -- File: New project
+  return { ok = true }
+end
+
+-- List installed FX with optional name/category filter
+-- params: filter (optional string, case-insensitive substring match on name or type)
+-- Sources:  reaper-vstplugins64.ini  (VSTs)  +  built-in ReaPlugs
+handlers.list_available_fx = function(p)
+  local filter = p and p.filter and p.filter:lower() or nil
+  local results = {}
+  local res = reaper.GetResourcePath()
+
+  local function add(name, fxtype)
+    if name and name ~= '' then
+      name = name:match('^%s*(.-)%s*$')  -- trim whitespace
+      local key = (name .. ' ' .. fxtype):lower()
+      if not filter or key:find(filter, 1, true) then
+        table.insert(results, { name = name, type = fxtype })
+      end
+    end
+  end
+
+  -- 1. JS/JSFX: parse reaper-jsfx.ini
+  --    Format:  NAME path/to/fx "JS: Display Name (Vendor)"
+  local jf = io.open(res .. '/reaper-jsfx.ini', 'r')
+  if jf then
+    for line in jf:lines() do
+      local name = line:match('^NAME%s+%S+%s+"(.+)"%s*$')
+      add(name, 'JS')
+    end
+    jf:close()
+  end
+
+  -- 2. VST2 / VST3: parse reaper-vstplugins64.ini
+  --    Format:  PluginFile.vst[3]=timestamp,GUID,Display Name[!!!VSTi]
+  --    Detect VST3 by ".vst3" in the key (filename before "=").
+  local vf = io.open(res .. '/reaper-vstplugins64.ini', 'r')
+  if vf then
+    for line in vf:lines() do
+      if line ~= '' and line:sub(1, 1) ~= '[' then
+        local key_part, val = line:match('^([^=]+)=(.+)$')
+        if key_part and val then
+          local fxtype = key_part:lower():match('%.vst3$') and 'VST3' or 'VST'
+          -- name is the 3rd comma-separated field
+          local n, name = 0, nil
+          for field in (val .. ','):gmatch('([^,]*),') do
+            n = n + 1
+            if n == 3 then name = field; break end
+          end
+          add(name, fxtype)
+        end
+      end
+    end
+    vf:close()
+  end
+
+  -- 3. CLAP: filename is platform-specific (e.g. reaper-clap-linux-x86_64.ini)
+  --    Format:  [Plugin.clap] section headers, then
+  --             someId=count|Display Name  lines (skip _=timestamp lines)
+  local clap_candidates = {
+    res .. '/reaper-clap-linux-x86_64.ini',
+    res .. '/reaper-clap-linux-aarch64.ini',
+    res .. '/reaper-clap-macos-arm64.ini',
+    res .. '/reaper-clap-macos-x86_64.ini',
+    res .. '/reaper-clapplugins.ini',  -- Windows / legacy
+  }
+  for _, clap_path in ipairs(clap_candidates) do
+    local cf = io.open(clap_path, 'r')
+    if cf then
+      for line in cf:lines() do
+        -- skip blank lines, [section] headers, and _=timestamp lines
+        if line ~= '' and line:sub(1,1) ~= '[' and not line:match('^_=') then
+          local name = line:match('|(.+)$')  -- take everything after the first '|'
+          add(name, 'CLAP')
+        end
+      end
+      cf:close()
+      break  -- found the file for this platform, stop looking
+    end
+  end
+
+  return { filter = p and p.filter or nil, count = #results, fx = results }
 end
 
 -- ---------------------------------------------------------------------------

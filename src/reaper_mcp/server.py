@@ -633,6 +633,30 @@ def open_project(file_path: str) -> dict[str, Any]:
         return _err(exc)
 
 
+@mcp.tool()
+def new_project() -> dict[str, Any]:
+    """Create a new blank REAPER project (equivalent to File > New Project)."""
+    try:
+        return _wrap(adapter.new_project())
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def list_available_fx(filter: str | None = None) -> dict[str, Any]:
+    """
+    List installed FX plugins (VST, VST3, CLAP, and JS/JSFX).
+    - filter: optional case-insensitive substring to match against plugin name or type
+              e.g. 'fabfilter', 'vst3', 'clap', 'rea', 'comp'
+    Returns a list of {name, type} objects and a total count.
+    type values: 'VST' (VST2), 'VST3', 'CLAP', 'JS'
+    """
+    try:
+        return _wrap(adapter.list_available_fx(filter=filter))
+    except Exception as exc:
+        return _err(exc)
+
+
 # ---------------------------------------------------------------------------
 # Routing & sends
 # ---------------------------------------------------------------------------

@@ -356,6 +356,14 @@ class ReaperAdapter:
     def open_project(self, file_path: str) -> dict[str, Any]:
         return self._client.call("open_project", file_path=file_path)
 
+    def new_project(self) -> dict[str, Any]:
+        return self._client.call("new_project")
+
+    def list_available_fx(
+        self, filter: str | None = None
+    ) -> dict[str, Any]:
+        return self._client.call("list_available_fx", filter=filter)
+
     # ------------------------------------------------------------------
     # Routing & sends
     # ------------------------------------------------------------------

@@ -97,7 +97,8 @@ Optional environment variables:
 | `insert_audio_file` | Insert an audio file at a time position |
 | `transport` | `play` / `stop` / `pause` / `record` / `goto_start` / `goto_position` |
 | `add_fx` | Add FX/instrument to a track |
-| `list_fx` | List FX chain entries |
+| `list_fx` | List FX chain entries on a track |
+| `list_available_fx` | List all installed FX plugins; optional `filter` by name/type (e.g. `"fabfilter"`, `"vst"`) |
 | `get_fx_params` | List all FX parameters |
 | `set_fx_param` | Set FX parameter (normalized `0.0–1.0`) |
 | `set_fx_enabled` | Enable or bypass an FX plugin |
