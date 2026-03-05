@@ -646,6 +646,35 @@ handlers.set_fx_param = function(p)
   }
 end
 
+-- Enable or bypass an FX plugin
+-- params: track_index, fx_index, enabled (bool)
+handlers.set_fx_enabled = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  reaper.TrackFX_SetEnabled(track, p.fx_index, p.enabled)
+  local state = reaper.TrackFX_GetEnabled(track, p.fx_index)
+  return { track_index = p.track_index, fx_index = p.fx_index, enabled = state }
+end
+
+-- Remove an FX from the chain
+-- params: track_index, fx_index
+handlers.remove_fx = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local ok = reaper.TrackFX_Delete(track, p.fx_index)
+  return { removed = ok, track_index = p.track_index, fx_index = p.fx_index }
+end
+
+-- Load an FX preset by name
+-- params: track_index, fx_index, preset_name
+handlers.set_fx_preset = function(p)
+  local track = track_at(p.track_index)
+  if not track then error('Track index out of range: ' .. tostring(p.track_index)) end
+  local ok = reaper.TrackFX_SetPreset(track, p.fx_index, p.preset_name)
+  local _, current = reaper.TrackFX_GetPreset(track, p.fx_index, '')
+  return { loaded = ok, track_index = p.track_index, fx_index = p.fx_index, preset = current }
+end
+
 -- Set tempo (and optionally time signature)
 handlers.set_tempo = function(p)
   local bpm   = p.bpm

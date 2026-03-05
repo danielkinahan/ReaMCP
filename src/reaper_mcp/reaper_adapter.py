@@ -272,6 +272,28 @@ class ReaperAdapter:
             normalized_value=normalized_value,
         )
 
+    def set_fx_enabled(
+        self, track_index: int, fx_index: int, enabled: bool
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "set_fx_enabled", track_index=track_index, fx_index=fx_index, enabled=enabled
+        )
+
+    def remove_fx(self, track_index: int, fx_index: int) -> dict[str, Any]:
+        return self._client.call(
+            "remove_fx", track_index=track_index, fx_index=fx_index
+        )
+
+    def set_fx_preset(
+        self, track_index: int, fx_index: int, preset_name: str
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "set_fx_preset",
+            track_index=track_index,
+            fx_index=fx_index,
+            preset_name=preset_name,
+        )
+
     # ------------------------------------------------------------------
     # Tempo & project parameters
     # ------------------------------------------------------------------

@@ -468,6 +468,41 @@ def set_fx_param(
         return _err(exc)
 
 
+@mcp.tool()
+def set_fx_enabled(track_index: int, fx_index: int, enabled: bool) -> dict[str, Any]:
+    """Enable or bypass (disable) a specific FX plugin on a track."""
+    try:
+        return _wrap(
+            adapter.set_fx_enabled(
+                track_index=track_index, fx_index=fx_index, enabled=enabled
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def remove_fx(track_index: int, fx_index: int) -> dict[str, Any]:
+    """Remove an FX plugin from a track's FX chain."""
+    try:
+        return _wrap(adapter.remove_fx(track_index=track_index, fx_index=fx_index))
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def set_fx_preset(track_index: int, fx_index: int, preset_name: str) -> dict[str, Any]:
+    """Load a named preset for an FX plugin on a track."""
+    try:
+        return _wrap(
+            adapter.set_fx_preset(
+                track_index=track_index, fx_index=fx_index, preset_name=preset_name
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
 # ---------------------------------------------------------------------------
 # Tempo & project parameters
 # ---------------------------------------------------------------------------
