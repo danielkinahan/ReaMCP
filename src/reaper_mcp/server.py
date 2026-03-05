@@ -575,6 +575,55 @@ def undo() -> dict[str, Any]:
         return _err(exc)
 
 
+@mcp.tool()
+def add_marker(
+    position: float,
+    name: str = "",
+    is_region: bool = False,
+    region_end: float | None = None,
+    color: int = 0,
+) -> dict[str, Any]:
+    """
+    Add a marker or region to the project.
+    - position: time in seconds
+    - is_region: True to create a region; also requires region_end
+    - region_end: end time in seconds (only for regions)
+    - color: REAPER color integer (0 = default)
+    """
+    try:
+        return _wrap(
+            adapter.add_marker(
+                position=position,
+                name=name,
+                is_region=is_region,
+                region_end=region_end,
+                color=color,
+            )
+        )
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def list_markers() -> dict[str, Any]:
+    """List all markers and regions in the project."""
+    try:
+        return _wrap(adapter.list_markers())
+    except Exception as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def delete_marker(enum_index: int) -> dict[str, Any]:
+    """
+    Delete a marker or region by its 0-based enumeration index (from list_markers).
+    """
+    try:
+        return _wrap(adapter.delete_marker(enum_index=enum_index))
+    except Exception as exc:
+        return _err(exc)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------

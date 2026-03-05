@@ -329,3 +329,26 @@ class ReaperAdapter:
 
     def undo(self) -> dict[str, Any]:
         return self._client.call("undo")
+
+    def add_marker(
+        self,
+        position: float,
+        name: str = "",
+        is_region: bool = False,
+        region_end: float | None = None,
+        color: int = 0,
+    ) -> dict[str, Any]:
+        return self._client.call(
+            "add_marker",
+            position=position,
+            name=name,
+            is_region=is_region,
+            region_end=region_end,
+            color=color,
+        )
+
+    def list_markers(self) -> list[dict[str, Any]]:
+        return self._client.call("list_markers")
+
+    def delete_marker(self, enum_index: int) -> dict[str, Any]:
+        return self._client.call("delete_marker", enum_index=enum_index)

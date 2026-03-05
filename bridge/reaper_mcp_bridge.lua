@@ -751,6 +751,43 @@ handlers.undo = function(_p)
   return { undone = true, action = tostring(label) }
 end
 
+-- Add a marker or region
+-- params: name, position, is_region (bool, default false),
+--         region_end (required if is_region=true), color (optional, 0=default)
+handlers.add_marker = function(p)
+  local is_region = p.is_region and true or false
+  local color     = p.color or 0
+  local rgnend    = p.region_end or p.position
+  local idx = reaper.AddProjectMarker2(0, is_region, p.position, rgnend, p.name or '', color)
+  return { marker_index = idx, is_region = is_region, position = p.position, name = p.name }
+end
+
+-- List all markers and regions
+handlers.list_markers = function(_p)
+  local n = reaper.CountProjectMarkers(0, nil, nil)
+  local markers = {}
+  for i = 0, n - 1 do
+    local _, isregion, pos, rgnend, name, idx = reaper.EnumProjectMarkers3(0, i)
+    table.insert(markers, {
+      enum_index = i,
+      marker_id  = idx,
+      is_region  = isregion,
+      position   = pos,
+      region_end = rgnend,
+      name       = name,
+    })
+  end
+  return markers
+end
+
+-- Delete a marker or region by its enumeration index
+-- params: enum_index (the 0-based index from list_markers)
+handlers.delete_marker = function(p)
+  local _, isregion, _, _, _, markrgnidx = reaper.EnumProjectMarkers3(0, p.enum_index)
+  local ok = reaper.DeleteProjectMarker(0, markrgnidx, isregion)
+  return { deleted = ok, enum_index = p.enum_index }
+end
+
 -- ---------------------------------------------------------------------------
 -- JSON-RPC dispatcher
 -- ---------------------------------------------------------------------------
