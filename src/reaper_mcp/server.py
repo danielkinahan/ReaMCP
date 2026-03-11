@@ -2,14 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as _pkg_version
 from typing import Any
-
-try:
-    SERVER_VERSION = _pkg_version("ReaMCP")
-except PackageNotFoundError:
-    SERVER_VERSION = "0.2.0"
 
 from mcp.server.fastmcp import FastMCP
 
@@ -43,14 +36,9 @@ def _err(exc: Exception) -> dict[str, Any]:
 
 @mcp.tool()
 def ping() -> dict[str, Any]:
-    """Check that the bridge is reachable. Returns server_version, bridge_version,
-    and reaper_version. Includes a version_match field — if false, the bridge
-    and server are out of sync and the bridge should be updated."""
+    """Check that the bridge is reachable. Returns bridge_version and reaper_version."""
     try:
-        result = adapter.ping()
-        result["server_version"] = SERVER_VERSION
-        result["version_match"] = result.get("bridge_version") == SERVER_VERSION
-        return _wrap(result)
+        return _wrap(adapter.ping())
     except Exception as exc:
         return _err(exc)
 

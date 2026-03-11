@@ -9,7 +9,6 @@
 
 local HOST = "127.0.0.1"
 local PORT = 9001
-local BRIDGE_VERSION = "0.2.0"
 
 -- ---------------------------------------------------------------------------
 -- Logging
@@ -227,7 +226,7 @@ end
 
 -- Connectivity check
 handlers.ping = function(_p)
-  return { pong = true, bridge_version = BRIDGE_VERSION, reaper_version = reaper.GetAppVersion() }
+  return { pong = true, reaper_version = reaper.GetAppVersion() }
 end
 
 -- Project metadata
